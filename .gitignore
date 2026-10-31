@@ -1,0 +1,14 @@
+# Archivos de Roblox Studio (copias locales y bloqueos)
+*.rbxl.lock
+*.rbxlx.lock
+*.rbxl
+*.rbxlx
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
