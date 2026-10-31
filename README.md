@@ -19,23 +19,24 @@ Todo el mapa (granjas, cinta, gallinero, plaza, tienda) **se construye por códi
 
 1. **Compra** huevos en la cinta que sale del 🐔 Gallinero (mantén **E**).
 2. Los huevos se colocan en los **nidos** de tu granja y generan dinero cada segundo.
-3. Pisa el **círculo verde** de tu granja para recoger el dinero.
+3. Pisa el símbolo **💰** de tu granja para recoger el dinero.
 4. **Roba** huevos de otras granjas (mantén **E** sobre un huevo ajeno) y llévalos a la tuya.
-5. **Defiéndete**: toca al ladrón, golpéalo con el 🏏 bate o cierra tu granja con el **círculo rojo**.
+5. **Defiéndete**: toca al ladrón, golpéalo con el 🏏 bate o cierra tu granja pisando el símbolo **🔒**.
 6. **Vende** tus huevos con **F** (50 % de su valor).
 
 ### Funciones
 
 | Función | Descripción |
 |---|---|
-| 🪺 **Nidos** | Empiezas con 4 y puedes desbloquear hasta 12. |
+| 🪺 **Nidos** | Empiezas con 4 y puedes desbloquear hasta 12 (24 con ampliaciones). |
+| 🏗️ **Ampliar granja** | 2 ampliaciones de +6 nidos detrás del granero. Con dinero del juego o al instante con Robux. |
 | 🐣 **Eclosión** | Los huevos se convierten en gallinas con el tiempo y producen x2. |
 | 🔥🌈 **Mutaciones** | Huevos de Lava (x2) y Arcoíris (x3). |
-| 🏃 **Caminadora** | Frente a cada granja. Caminar en ella sube tu velocidad (8 niveles, de 16 a 34). |
+| 🏃 **Caminadora** | Al costado de cada granja. Pulsa E en la consola y corres fijo en el centro; los pasos suben tu velocidad (8 niveles, de 16 a 34). Cada nivel cambia el color y el diseño (luces, paneles, arcos, corona dorada). Bájate con Espacio o con el botón. |
 | 🦊 **Zorro** | Cada 6 min intenta robar un huevo. Golpéalo 3 veces para ahuyentarlo y ganar premio. |
 | 🌟 **Hora dorada** | Cada 5 min, durante 60 s, salen más huevos raros y mutaciones. |
 | 📋 **Misiones diarias** | 3 misiones al día con premio en dinero. |
-| 🛡️ **Escudos** | Protección al entrar (60 s) y después de que te roban (30 s). |
+| 🛡️ **Escudos** | Gratis al entrar (60 s) y después de que te roban (30 s). En la tienda: 10 min, 30 min, 1 día y 2 días, con dinero del juego o Robux. El tiempo corre aunque no estés conectado. |
 | ⚡ **Cerca eléctrica** | Mejora de tienda: puede electrocutar al ladrón cuando sale con tu huevo. |
 | 🔒 **Cierre largo** | Mejora de tienda: tu granja queda cerrada más tiempo. |
 | ♻️ **Renacer** | Reinicias tu progreso a cambio de +50 % de ingresos permanente. |
@@ -92,6 +93,27 @@ PASES = {
 },
 ```
 
+### Productos de desarrollador (Robux, compra repetible)
+
+La ampliación de granja y los escudos se pueden comprar con Robux varias veces, así que son **productos de desarrollador**, no Game Passes.
+
+1. En create.roblox.com → tu experiencia → **Monetización → Productos de desarrollador**, crea:
+   - **Ampliar granja**
+   - **Escudo 10 minutos**, **Escudo 30 minutos**, **Escudo 1 día**, **Escudo 2 días**
+2. Copia el ID de cada uno en `CONFIG.PRODUCTOS`:
+
+```lua
+PRODUCTOS = {
+	Ampliar = 111111111,
+	Escudo10m = 222222222,
+	Escudo30m = 333333333,
+	Escudo1d = 444444444,
+	Escudo2d = 555555555,
+},
+```
+
+> En Studio las compras con Robux son de prueba (no se cobra nada), así que puedes probarlas con los IDs reales.
+
 ---
 
 ## ⚙️ Configuración
@@ -104,6 +126,8 @@ Todo se ajusta en la tabla `CONFIG`, al principio de `RobaHuevos_Servidor.lua`:
 | `DINERO_INICIAL` | Dinero al empezar |
 | `INTERVALO_HUEVOS` / `DURACION_CINTA` | Ritmo de la cinta |
 | `PRECIOS_NIDO` | Costo de cada nido |
+| `PRECIOS_AMPLIACION` | Costo de cada ampliación de granja (dinero del juego) |
+| `ESCUDOS` | Duración y precio de cada escudo (dinero del juego) |
 | `ECLOSION_BASE` / `BONO_GALLINA` | Tiempo de eclosión y bono de las gallinas |
 | `ZORRO_CADA` / `ZORRO_VIDA` | Frecuencia y vida del zorro |
 | `DURACIONES_CIERRE` / `PRECIOS_CIERRE` | Mejora de cierre |

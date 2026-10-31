@@ -1,5 +1,5 @@
 --[[
-	ROBA EL HUEVO  -  Script del SERVIDOR  (v3)
+	ROBA EL HUEVO  -  Script del SERVIDOR  (v4)
 	Dónde va: ServerScriptService  (Insertar objeto > Script)
 	Construye todo el mapa automáticamente al iniciar el juego.
 
@@ -13,7 +13,14 @@
 	  • Tienda en la plaza (al final de la cinta) con mejoras y Game Passes.
 	  • Tabla global de los jugadores más ricos.
 
+	Novedades v4:
+	  • La caminadora está al costado de la granja; el jugador corre fijo en el centro.
+	  • La caminadora cambia de color y de diseño en cada nivel.
+	  • Ampliar la granja (+6 nidos por ampliación) con dinero del juego o Robux.
+	  • Escudos de 10 min, 30 min, 1 día y 2 días con dinero del juego o Robux.
+
 	⚙️ Game Passes: créalos en create.roblox.com y pon sus IDs en CONFIG.PASES.
+	⚙️ Productos (Robux, compra repetible): pon sus IDs en CONFIG.PRODUCTOS.
 ]]
 
 local Players = game:GetService("Players")
@@ -31,7 +38,7 @@ local Debris = game:GetService("Debris")
 local CONFIG = {
 	CENTRO = Vector3.new(0, 300, 0), -- el mapa se construye en el cielo para no chocar con tu escenario
 	DINERO_INICIAL = 100,
-	INTERVALO_HUEVOS = 2.5, -- segundos entre huevos en la cinta
+	INTERVALO_HUEVOS = 10, -- segundos entre huevos en la cinta (en la hora dorada, la mitad)
 	DURACION_CINTA = 40, -- segundos que tarda un huevo en cruzar la cinta
 	FACTOR_CARGANDO = 0.7, -- el ladrón va al 70 % de su velocidad
 	ESPERA_BLOQUEO = 20, -- tiempo tras el cierre antes de poder cerrar otra vez
@@ -39,7 +46,21 @@ local CONFIG = {
 	ESCUDO_ENTRADA = 60, -- protección al entrar al juego
 	VENTA_PORCENTAJE = 0.5,
 	NIDOS_INICIALES = 4,
-	PRECIOS_NIDO = { 0, 0, 0, 0, 500, 2500, 10000, 40000, 150000, 500000, 1500000, 5000000 },
+	-- nidos 1-12: granja normal; 13-18: ampliación 1; 19-24: ampliación 2
+	PRECIOS_NIDO = {
+		0, 0, 0, 0, 500, 2500, 10000, 40000, 150000, 500000, 1500000, 5000000,
+		8000000, 12000000, 18000000, 25000000, 35000000, 50000000,
+		70000000, 100000000, 140000000, 200000000, 280000000, 400000000,
+	},
+	-- Ampliar la granja con dinero del juego (con Robux es el producto "Ampliar")
+	PRECIOS_AMPLIACION = { 250000, 2500000 },
+	-- Escudos: nadie puede entrar a tu granja. El tiempo corre aunque no estés conectado.
+	ESCUDOS = {
+		Escudo10m = { nombre = "10 minutos", segundos = 600, precio = 5000 },
+		Escudo30m = { nombre = "30 minutos", segundos = 1800, precio = 15000 },
+		Escudo1d = { nombre = "1 día", segundos = 86400, precio = 400000 },
+		Escudo2d = { nombre = "2 días", segundos = 172800, precio = 700000 },
+	},
 	RENACER_BASE = 1000000, -- costo = base * (renacimientos + 1)^2
 	BONO_RENACER = 0.5, -- +50 % de ingresos por renacimiento
 	HORA_DORADA_CADA = 300,
@@ -73,6 +94,15 @@ local CONFIG = {
 		CaminadoraVIP = 0,
 	},
 	PASES_GRATIS_EN_STUDIO = true, -- en Studio tienes todos los pases para probar
+
+	-- Productos de desarrollador (Robux, se compran las veces que quieras): pon aquí sus IDs
+	PRODUCTOS = {
+		Ampliar = 0,
+		Escudo10m = 0,
+		Escudo30m = 0,
+		Escudo1d = 0,
+		Escudo2d = 0,
+	},
 }
 
 local RAREZAS = {
@@ -91,15 +121,16 @@ local MUTACIONES = {
 }
 
 -- niveles de la caminadora: pasos necesarios y velocidad que dan
+-- color = banda, marco = estructura, detalle = postes, luces y arcos
 local CAMINADORA = {
-	{ pasos = 0, vel = 16, color = Color3.fromRGB(90, 90, 95), material = Enum.Material.Fabric },
-	{ pasos = 500, vel = 18, color = Color3.fromRGB(130, 135, 145), material = Enum.Material.Metal },
-	{ pasos = 1500, vel = 20, color = Color3.fromRGB(60, 130, 220), material = Enum.Material.Metal },
-	{ pasos = 4000, vel = 22, color = Color3.fromRGB(60, 190, 90), material = Enum.Material.DiamondPlate },
-	{ pasos = 10000, vel = 24, color = Color3.fromRGB(160, 80, 220), material = Enum.Material.DiamondPlate },
-	{ pasos = 25000, vel = 27, color = Color3.fromRGB(255, 140, 30), material = Enum.Material.Neon },
-	{ pasos = 50000, vel = 30, color = Color3.fromRGB(255, 60, 60), material = Enum.Material.Neon },
-	{ pasos = 100000, vel = 34, color = Color3.fromRGB(255, 215, 0), material = Enum.Material.Neon },
+	{ pasos = 0, vel = 16, color = Color3.fromRGB(90, 90, 95), material = Enum.Material.Fabric, marco = Color3.fromRGB(150, 110, 70), detalle = Color3.fromRGB(200, 200, 205) },
+	{ pasos = 500, vel = 18, color = Color3.fromRGB(130, 135, 145), material = Enum.Material.Metal, marco = Color3.fromRGB(70, 70, 80), detalle = Color3.fromRGB(225, 225, 235) },
+	{ pasos = 1500, vel = 20, color = Color3.fromRGB(60, 130, 220), material = Enum.Material.Metal, marco = Color3.fromRGB(30, 50, 90), detalle = Color3.fromRGB(120, 200, 255) },
+	{ pasos = 4000, vel = 22, color = Color3.fromRGB(60, 190, 90), material = Enum.Material.DiamondPlate, marco = Color3.fromRGB(25, 70, 35), detalle = Color3.fromRGB(140, 255, 140) },
+	{ pasos = 10000, vel = 24, color = Color3.fromRGB(160, 80, 220), material = Enum.Material.DiamondPlate, marco = Color3.fromRGB(50, 25, 80), detalle = Color3.fromRGB(220, 150, 255) },
+	{ pasos = 25000, vel = 27, color = Color3.fromRGB(255, 140, 30), material = Enum.Material.Neon, marco = Color3.fromRGB(60, 30, 10), detalle = Color3.fromRGB(255, 200, 80) },
+	{ pasos = 50000, vel = 30, color = Color3.fromRGB(255, 60, 60), material = Enum.Material.Neon, marco = Color3.fromRGB(40, 10, 10), detalle = Color3.fromRGB(255, 120, 120) },
+	{ pasos = 100000, vel = 34, color = Color3.fromRGB(255, 215, 0), material = Enum.Material.Neon, marco = Color3.fromRGB(30, 25, 10), detalle = Color3.fromRGB(255, 240, 150) },
 }
 
 local TIPOS_MISION = {
@@ -164,6 +195,18 @@ local function formatoTiempo(s)
 	return string.format("%d:%02d", s // 60, s % 60)
 end
 
+local function formatoDuracion(s)
+	s = math.max(0, math.floor(s))
+	if s >= 86400 then
+		return string.format("%dd %dh", s // 86400, (s % 86400) // 3600)
+	elseif s >= 3600 then
+		return string.format("%dh %dm", s // 3600, (s % 3600) // 60)
+	elseif s >= 60 then
+		return string.format("%dm %ds", s // 60, s % 60)
+	end
+	return s .. "s"
+end
+
 local function stat(plr, nombre)
 	local ls = plr:FindFirstChild("leaderstats")
 	return ls and ls:FindFirstChild(nombre)
@@ -190,8 +233,9 @@ local cargando = {} -- [jugador] = {huevo, info, base, ranura, dueno, salio}
 local datosCargados = {} -- [jugador] = true si el DataStore cargó bien
 local horaDorada = false
 local zorro = nil -- zorro activo
+local enCaminadora = {} -- [jugador] = granja (corriendo en su caminadora)
 
-local comprarItem, golpearZorro, intentarRobar, aplicarNidos -- se definen más abajo
+local comprarItem, golpearZorro, intentarRobar, aplicarNidos, entrarCaminadora -- se definen más abajo
 
 local function tienePase(plr, nombre)
 	local e = estado[plr]
@@ -239,6 +283,15 @@ end
 local function duracionCierre(plr)
 	local e = estado[plr]
 	return CONFIG.DURACIONES_CIERRE[e and e.cierre or 1]
+end
+
+-- ¿la granja está protegida? (cierre, escudo de entrada/robo o escudo comprado)
+local function protegida(base)
+	if os.clock() < base.bloqueadoHasta then
+		return true
+	end
+	local e = base.dueno and estado[base.dueno]
+	return e ~= nil and os.time() < (e.escudoHasta or 0)
 end
 
 ------------------------------------------------------------------
@@ -387,7 +440,12 @@ local MEDIO = 23 -- media medida de la granja (cerca)
 
 local function dentroDeBase(base, pos)
 	local p = base.cf:PointToObjectSpace(pos)
-	return math.abs(p.X) < MEDIO and math.abs(p.Z) < MEDIO and p.Y > -2 and p.Y < 15
+	return math.abs(p.X) < MEDIO and p.Z > -MEDIO and p.Z < (base.fondo or MEDIO) and p.Y > -2 and p.Y < 15
+end
+
+-- 12 nidos en la granja normal + 6 por cada ampliación
+local function maxNidos(base)
+	return 12 + 6 * (base.ampliacion or 0)
 end
 
 local function ranuraLibre(base)
@@ -597,7 +655,7 @@ end
 -- NIDOS (desbloqueables)
 ------------------------------------------------------------------
 local function desbloquearNido(plr, base, i)
-	if plr ~= base.dueno or i ~= base.nidos + 1 then
+	if plr ~= base.dueno or i ~= base.nidos + 1 or i > maxNidos(base) then
 		return
 	end
 	local precio = CONFIG.PRECIOS_NIDO[i]
@@ -608,18 +666,29 @@ local function desbloquearNido(plr, base, i)
 	end
 	d.Value -= precio
 	aplicarNidos(base, i)
-	notificar(plr, "🪺 ¡Nuevo nido desbloqueado! (" .. i .. "/" .. #base.ranuras .. ")")
+	notificar(plr, "🪺 ¡Nuevo nido desbloqueado! (" .. i .. "/" .. maxNidos(base) .. ")")
 end
 
 function aplicarNidos(base, n)
 	base.nidos = n
 	local duenoId = base.dueno and base.dueno.UserId or 0
+	local maximo = maxNidos(base)
 	for i, r in ipairs(base.ranuras) do
 		local nido = r.nido
 		nido:SetAttribute("DuenoId", duenoId)
 		local prompt = nido:FindFirstChild("PromptNido")
 		local cartel = nido:FindFirstChild("CartelNido")
-		if i <= n then
+		nido.CanCollide = i <= maximo
+		if i > maximo then
+			-- nido de una ampliación que aún no se compra: invisible
+			nido.Transparency = 1
+			if prompt then
+				prompt:Destroy()
+			end
+			if cartel then
+				cartel:Destroy()
+			end
+		elseif i <= n then
 			nido.Color = PAJA
 			nido.Transparency = 0
 			if prompt then
@@ -675,32 +744,132 @@ local function aplicarCerca(base)
 	end
 end
 
+-- La caminadora se reconstruye en cada nivel: cambia de color y gana piezas nuevas
 local function aplicarCaminadora(base)
 	local e = base.dueno and estado[base.dueno]
-	local nv = CAMINADORA[nivelCaminadora(e and e.pasos or 0)]
-	base.banda.Color = nv.color
-	base.banda.Material = nv.material
-	-- la banda empuja hacia atrás a la misma velocidad a la que camina el dueño
-	base.banda.AssemblyLinearVelocity = base.cf.LookVector * (base.dueno and velocidadDe(base.dueno) or 16)
+	local n = nivelCaminadora(e and e.pasos or 0)
+	local duenoId = base.dueno and base.dueno.UserId or 0
+	if base.caminadora and base.nivelCaminadora == n then
+		base.consola:SetAttribute("DuenoId", duenoId)
+		return
+	end
+	if base.caminadora then
+		base.caminadora:Destroy()
+	end
+	base.nivelCaminadora = n
+	local nv = CAMINADORA[n]
+	local m = Instance.new("Model")
+	m.Name = "Caminadora"
+	m.Parent = base.modelo
+	base.caminadora = m
+	local function pieza(props, offset, clase)
+		props.CFrame = base.tcf * offset
+		props.Parent = m
+		return crearParte(props, clase)
+	end
+	local brillo = n >= 6 and Enum.Material.Neon or Enum.Material.Metal
+
+	-- nivel 1+: marco, banda, postes, pasamanos y consola (el corredor mira hacia la consola)
+	pieza({ Name = "Marco", Size = Vector3.new(6.4, 0.8, 13), Color = nv.marco, Material = Enum.Material.Metal }, CFrame.new(0, 0.4, 0))
+	local banda = pieza({ Name = "Banda", Size = Vector3.new(5, 0.3, 12), Color = nv.color, Material = nv.material }, CFrame.new(0, 0.95, 0))
+	banda:SetAttribute("Velocidad", nv.vel)
+	for k = 0, 5 do
+		-- franjas que el cliente mueve para que la banda parezca girar
+		local z0 = -6 + k * 2
+		local franja = pieza({ Name = "Franja", Size = Vector3.new(4.8, 0.05, 0.5), Color = nv.detalle, Material = Enum.Material.SmoothPlastic, CanCollide = false, CanQuery = false }, CFrame.new(0, 1.12, z0))
+		franja:SetAttribute("Z0", z0)
+		CollectionService:AddTag(franja, "FranjaCaminadora")
+	end
+	for _, x in ipairs({ -3, 3 }) do
+		for _, z in ipairs({ -5.5, 5.5 }) do
+			pieza({ Name = "Poste", Size = Vector3.new(0.4, 4, 0.4), Color = nv.detalle, Material = Enum.Material.Metal }, CFrame.new(x, 2.8, z))
+		end
+		pieza({ Name = "Pasamanos", Size = Vector3.new(0.4, 0.4, 11.4), Color = nv.detalle, Material = brillo }, CFrame.new(x, 4.8, 0))
+	end
+	pieza({ Name = "PosteConsola", Size = Vector3.new(0.6, 4.5, 0.6), Color = nv.marco, Material = Enum.Material.Metal }, CFrame.new(0, 3, -6.3))
+	local consola = pieza({ Name = "Consola", Size = Vector3.new(5, 2, 0.5), Color = Color3.fromRGB(30, 30, 40), Material = Enum.Material.Glass }, CFrame.new(0, 5.6, -6.3))
+
+	-- nivel 3+: tiras de luz en los costados
+	if n >= 3 then
+		for _, x in ipairs({ -3.25, 3.25 }) do
+			pieza({ Name = "Luz", Size = Vector3.new(0.15, 0.3, 13), Color = nv.detalle, Material = Enum.Material.Neon }, CFrame.new(x, 0.6, 0))
+		end
+	end
+	-- nivel 4+: paneles de vidrio a los lados
+	if n >= 4 then
+		for _, x in ipairs({ -3.45, 3.45 }) do
+			pieza({ Name = "Panel", Size = Vector3.new(0.2, 2.2, 11), Color = nv.detalle, Material = Enum.Material.Glass, Transparency = 0.5 }, CFrame.new(x, 2, 0))
+		end
+	end
+	-- nivel 5+: arco al frente
+	-- nivel 7+: segundo arco atrás y plataforma brillante
+	local arcos = n >= 7 and { -6.8, 6.8 } or (n >= 5 and { -6.8 } or {})
+	for _, z in ipairs(arcos) do
+		for _, x in ipairs({ -3.9, 3.9 }) do
+			pieza({ Name = "PilarArco", Size = Vector3.new(0.8, 8, 0.8), Color = nv.detalle, Material = brillo }, CFrame.new(x, 4.4, z))
+		end
+		pieza({ Name = "VigaArco", Size = Vector3.new(8.6, 0.8, 0.8), Color = nv.detalle, Material = Enum.Material.Neon }, CFrame.new(0, 8.4, z))
+	end
+	if n >= 7 then
+		pieza({ Name = "Plataforma", Size = Vector3.new(9.5, 0.2, 15.5), Color = nv.detalle, Material = Enum.Material.Neon, Transparency = 0.3 }, CFrame.new(0, 0.1, 0))
+	end
+	-- nivel 6+: luz en la consola
+	if n >= 6 then
+		local luz = Instance.new("PointLight")
+		luz.Color = nv.detalle
+		luz.Range = 16
+		luz.Brightness = 2
+		luz.Parent = consola
+	end
+	-- nivel 8: corona dorada con fuego
+	if n >= 8 then
+		local corona = pieza({ Name = "Corona", Shape = Enum.PartType.Ball, Size = Vector3.new(1.8, 1.8, 1.8), Color = Color3.fromRGB(255, 215, 0), Material = Enum.Material.Neon }, CFrame.new(0, 9.6, -6.8))
+		local chispas = Instance.new("Sparkles")
+		chispas.SparkleColor = Color3.fromRGB(255, 215, 0)
+		chispas.Parent = corona
+		local fuego = Instance.new("Fire")
+		fuego.Size = 3
+		fuego.Color = Color3.fromRGB(255, 200, 50)
+		fuego.SecondaryColor = Color3.fromRGB(255, 120, 0)
+		fuego.Parent = corona
+	end
+
+	base.consola = consola
+	consola:SetAttribute("DuenoId", duenoId)
+	base.textoCaminadora = crearCartel(consola, "🏃 Caminadora", 80, n >= 5 and 6 or 3.2, 280)
+	if n >= 3 then
+		base.textoCaminadora.TextColor3 = nv.detalle
+	end
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "PromptCorrer"
+	prompt.ActionText = "Correr"
+	prompt.ObjectText = "Caminadora nivel " .. n
+	prompt.HoldDuration = 0.3
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Triggered:Connect(function(plr)
+		entrarCaminadora(plr, base)
+	end)
+	prompt.Parent = consola
 end
 
 ------------------------------------------------------------------
 -- MAPA
 ------------------------------------------------------------------
-crearParte({ Name = "Suelo", Size = Vector3.new(380, 2, 240), Position = C, Color = Color3.fromRGB(95, 165, 75), Material = Enum.Material.Grass })
+crearParte({ Name = "Suelo", Size = Vector3.new(380, 2, 260), Position = C, Color = Color3.fromRGB(95, 165, 75), Material = Enum.Material.Grass })
 
 -- paredes invisibles para no caerse del mapa
-for _, d in ipairs({ { 190, 0, 1, 240 }, { -190, 0, 1, 240 }, { 0, 120, 380, 1 }, { 0, -120, 380, 1 } }) do
+for _, d in ipairs({ { 190, 0, 1, 260 }, { -190, 0, 1, 260 }, { 0, 130, 380, 1 }, { 0, -130, 380, 1 } }) do
 	crearParte({ Name = "Limite", Size = Vector3.new(d[3], 40, d[4]), Position = C + Vector3.new(d[1], 20, d[2]), Transparency = 1 })
 end
 
 -- árboles en los bordes
 for x = -180, 180, 20 do
-	for _, z in ipairs({ -110, 110 }) do
+	for _, z in ipairs({ -122, 122 }) do
 		arbol(Vector3.new(C.X + x + math.random(-4, 4), SUELO_Y, C.Z + z + math.random(-3, 3)), 0.8 + math.random() * 0.5)
 	end
 end
-for z = -90, 90, 30 do
+for z = -105, 105, 30 do
 	for _, x in ipairs({ -183, 183 }) do
 		local libre = (x > 0 and math.abs(z) > 65) or (x < 0 and math.abs(z) > 15)
 		if libre then
@@ -758,7 +927,80 @@ local POS_NIDOS = {
 	{ -12, -6 }, { 12, -6 }, { -12, 1 }, { 12, 1 },
 	{ -18, -6 }, { 18, -6 }, { -18, 1 }, { 18, 1 },
 	{ -12, 8 }, { 12, 8 }, { -18, 8 }, { 18, 8 },
+	-- ampliación 1 y 2 (detrás del granero)
+	{ -17.5, 28 }, { -10.5, 28 }, { -3.5, 28 }, { 3.5, 28 }, { 10.5, 28 }, { 17.5, 28 },
+	{ -17.5, 38 }, { -10.5, 38 }, { -3.5, 38 }, { 3.5, 38 }, { 10.5, 38 }, { 17.5, 38 },
 }
+
+-- fondo de la granja según el nivel de ampliación (0, 1, 2)
+local FONDOS = { MEDIO, MEDIO + 10, MEDIO + 20 }
+
+-- muestra u oculta un modelo guardando la transparencia y colisión originales
+local function mostrar(modelo, visible)
+	for _, p in ipairs(modelo:GetDescendants()) do
+		if p:IsA("BasePart") then
+			if p:GetAttribute("TransOrig") == nil then
+				p:SetAttribute("TransOrig", p.Transparency)
+				p:SetAttribute("ColOrig", p.CanCollide)
+			end
+			p.Transparency = visible and p:GetAttribute("TransOrig") or 1
+			p.CanCollide = visible and p:GetAttribute("ColOrig") or false
+			p.CanQuery = visible
+		end
+	end
+end
+
+local function aplicarAmpliacion(base, nivel)
+	base.ampliacion = nivel
+	base.fondo = FONDOS[nivel + 1]
+	for n, anexo in pairs(base.anexos) do
+		mostrar(anexo, n <= nivel)
+	end
+	for n, fondo in pairs(base.fondos) do
+		mostrar(fondo, n == nivel)
+	end
+	aplicarNidos(base, math.min(base.nidos, maxNidos(base)))
+end
+
+-- Símbolo pintado en el piso: círculo de color suave con un ícono, sin brillo.
+-- Devuelve una zona invisible (para detectar al jugador), el círculo y el ícono.
+local function crearSimbolo(cf, modelo, nombre, tamano, icono, color)
+	local pintura = crearParte({ Name = nombre .. "Pintura", Size = Vector3.new(tamano, 0.2, tamano), CFrame = cf, Transparency = 1, CanCollide = false, CanTouch = false, Parent = modelo })
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = Enum.NormalId.Top
+	sg.CanvasSize = Vector2.new(200, 200)
+	sg.LightInfluence = 1 -- se ilumina como el resto del mapa (no brilla de noche)
+	sg.Parent = pintura
+	local circulo = Instance.new("Frame")
+	circulo.Size = UDim2.fromScale(1, 1)
+	circulo.BackgroundColor3 = color
+	circulo.BackgroundTransparency = 0.2
+	circulo.Parent = sg
+	Instance.new("UICorner", circulo).CornerRadius = UDim.new(0.5, 0)
+	local borde = Instance.new("UIStroke")
+	borde.Color = Color3.fromRGB(250, 245, 230)
+	borde.Thickness = 10
+	borde.Parent = circulo
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.fromScale(0.64, 0.64)
+	lbl.Position = UDim2.fromScale(0.18, 0.18)
+	lbl.BackgroundTransparency = 1
+	lbl.TextScaled = true
+	lbl.Font = Enum.Font.FredokaOne
+	lbl.Text = icono
+	lbl.Parent = circulo
+	local zona = crearParte({ Name = nombre, Size = Vector3.new(tamano * 0.85, 3, tamano * 0.85), CFrame = cf * CFrame.new(0, 1.4, 0), Transparency = 1, CanCollide = false, Parent = modelo })
+	return zona, circulo, lbl
+end
+
+local COLOR_CERRAR = Color3.fromRGB(165, 65, 55)
+local COLOR_PROTEGIDA = Color3.fromRGB(60, 115, 185)
+local COLOR_ESPERA = Color3.fromRGB(120, 115, 105)
+
+local function estiloCierre(base, color, icono)
+	base.circuloBloqueo.BackgroundColor3 = color
+	base.iconoBloqueo.Text = icono
+end
 
 local function construirGranja(i, pos)
 	-- la granja "mira" hacia la cinta: la puerta está en z local = -23
@@ -775,6 +1017,11 @@ local function construirGranja(i, pos)
 		dueno = nil,
 		ranuras = {},
 		travesanos = {},
+		anexos = {},
+		fondos = {},
+		ampliacion = 0,
+		fondo = MEDIO,
+		tcf = cf * CFrame.new(32, 0, -6), -- caminadora al costado de la granja
 		nidos = CONFIG.NIDOS_INICIALES,
 		pendiente = 0,
 		bloqueadoHasta = 0,
@@ -787,9 +1034,26 @@ local function construirGranja(i, pos)
 	crearParte({ Name = "Camino", Size = Vector3.new(7, 0.2, 34), CFrame = cf * CFrame.new(0, 1.1, -6), Color = TIERRA, Material = Enum.Material.Ground, Parent = modelo })
 	crearParte({ Name = "Sendero", Size = Vector3.new(7, 0.2, 36), CFrame = cf * CFrame.new(0, 0.1, -41), Color = TIERRA, Material = Enum.Material.Ground, Parent = modelo })
 
-	-- cerca
-	valla(cf, Vector3.new(-MEDIO, 0, MEDIO), Vector3.new(MEDIO, 0, MEDIO), modelo, base.travesanos)
+	-- cerca (el fondo cambia de lugar cuando la granja se amplía)
 	valla(cf, Vector3.new(-MEDIO, 0, -MEDIO), Vector3.new(-MEDIO, 0, MEDIO), modelo, base.travesanos)
+	for nivel = 0, #CONFIG.PRECIOS_AMPLIACION do
+		local z = FONDOS[nivel + 1]
+		if nivel > 0 then
+			local zAntes = FONDOS[nivel]
+			local anexo = Instance.new("Model")
+			anexo.Name = "Ampliacion" .. nivel
+			anexo.Parent = modelo
+			crearParte({ Name = "Pasto", Size = Vector3.new(46, 1, z - zAntes), CFrame = cf * CFrame.new(0, 0.5, (z + zAntes) / 2), Color = Color3.fromRGB(115, 185, 85), Material = Enum.Material.Grass, Parent = anexo })
+			valla(cf, Vector3.new(-MEDIO, 0, zAntes), Vector3.new(-MEDIO, 0, z), anexo, base.travesanos)
+			valla(cf, Vector3.new(MEDIO, 0, zAntes), Vector3.new(MEDIO, 0, z), anexo, base.travesanos)
+			base.anexos[nivel] = anexo
+		end
+		local fondo = Instance.new("Model")
+		fondo.Name = "Fondo" .. nivel
+		fondo.Parent = modelo
+		valla(cf, Vector3.new(-MEDIO, 0, z), Vector3.new(MEDIO, 0, z), fondo, base.travesanos)
+		base.fondos[nivel] = fondo
+	end
 	valla(cf, Vector3.new(MEDIO, 0, -MEDIO), Vector3.new(MEDIO, 0, MEDIO), modelo, base.travesanos)
 	valla(cf, Vector3.new(-MEDIO, 0, -MEDIO), Vector3.new(-6.5, 0, -MEDIO), modelo, base.travesanos)
 	valla(cf, Vector3.new(6.5, 0, -MEDIO), Vector3.new(MEDIO, 0, -MEDIO), modelo, base.travesanos)
@@ -839,26 +1103,12 @@ local function construirGranja(i, pos)
 	end
 
 	-- círculo para recoger dinero
-	base.padRecoger = crearParte({ Name = "Recoger", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 7, 7), CFrame = cf * CFrame.new(-12, 1.2, -16) * VERTICAL, Color = Color3.fromRGB(60, 220, 90), Material = Enum.Material.Neon, Parent = modelo })
-	base.textoRecoger = crearCartel(base.padRecoger, "", 50, 3)
+	base.padRecoger = crearSimbolo(cf * CFrame.new(-12, 1.15, -16), modelo, "Recoger", 7, "💰", Color3.fromRGB(75, 140, 70))
+	base.textoRecoger = crearCartel(base.padRecoger, "", 50, 2)
 
 	-- círculo para cerrar la granja
-	base.padBloqueo = crearParte({ Name = "Cerrar", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 6, 6), CFrame = cf * CFrame.new(12, 1.2, -16) * VERTICAL, Color = Color3.fromRGB(230, 50, 50), Material = Enum.Material.Neon, Parent = modelo })
-	base.textoBloqueo = crearCartel(base.padBloqueo, "", 50, 3)
-
-	-- caminadora (afuera, frente a la granja): se camina hacia la granja
-	local tcf = cf * CFrame.new(14, 0, -36)
-	crearParte({ Name = "BaseCaminadora", Size = Vector3.new(6.4, 0.8, 13), CFrame = tcf * CFrame.new(0, 0.4, 0), Color = Color3.fromRGB(55, 55, 60), Material = Enum.Material.Metal, Parent = modelo })
-	base.banda = crearParte({ Name = "Banda", Size = Vector3.new(5, 0.3, 12), CFrame = tcf * CFrame.new(0, 0.95, 0), Color = CAMINADORA[1].color, Material = CAMINADORA[1].material, Parent = modelo })
-	for _, x in ipairs({ -3, 3 }) do
-		for _, z in ipairs({ -5.5, 5.5 }) do
-			crearParte({ Name = "PosteCaminadora", Size = Vector3.new(0.4, 4, 0.4), CFrame = tcf * CFrame.new(x, 2.8, z), Color = Color3.fromRGB(200, 200, 205), Material = Enum.Material.Metal, Parent = modelo })
-		end
-		crearParte({ Name = "Pasamanos", Size = Vector3.new(0.4, 0.4, 11.4), CFrame = tcf * CFrame.new(x, 4.8, 0), Color = Color3.fromRGB(200, 200, 205), Material = Enum.Material.Metal, Parent = modelo })
-	end
-	crearParte({ Name = "PosteConsola", Size = Vector3.new(0.6, 4.5, 0.6), CFrame = tcf * CFrame.new(0, 3, 6.3), Color = Color3.fromRGB(55, 55, 60), Material = Enum.Material.Metal, Parent = modelo })
-	local consola = crearParte({ Name = "Consola", Size = Vector3.new(5, 2, 0.5), CFrame = tcf * CFrame.new(0, 5.6, 6.3), Color = Color3.fromRGB(30, 30, 40), Material = Enum.Material.Glass, Parent = modelo })
-	base.textoCaminadora = crearCartel(consola, "🏃 Caminadora", 80, 3.2, 280)
+	base.padBloqueo, base.circuloBloqueo, base.iconoBloqueo = crearSimbolo(cf * CFrame.new(12, 1.15, -16), modelo, "Cerrar", 6, "🔒", COLOR_CERRAR)
+	base.textoBloqueo = crearCartel(base.padBloqueo, "", 50, 2)
 
 	base.padRecoger.Touched:Connect(function(hit)
 		local plr = Players:GetPlayerFromCharacter(hit.Parent)
@@ -883,7 +1133,7 @@ local function construirGranja(i, pos)
 		end
 	end)
 
-	aplicarNidos(base, CONFIG.NIDOS_INICIALES)
+	aplicarAmpliacion(base, 0)
 	aplicarCaminadora(base)
 	table.insert(bases, base)
 end
@@ -941,6 +1191,9 @@ end
 function intentarRobar(plr, base, idx, h)
 	local ranura = base.ranuras[idx]
 	if plr == base.dueno or ranura.huevo ~= h then
+		return
+	end
+	if enCaminadora[plr] then
 		return
 	end
 	if cargando[plr] then
@@ -1092,7 +1345,7 @@ local function lanzarZorro()
 	end
 	local candidatas = {}
 	for _, b in ipairs(bases) do
-		if b.dueno and os.clock() >= b.bloqueadoHasta then
+		if b.dueno and not protegida(b) then
 			for _, r in ipairs(b.ranuras) do
 				if r.huevo then
 					table.insert(candidatas, b)
@@ -1128,7 +1381,7 @@ local function lanzarZorro()
 		if not moverZorro(z, frente) then
 			return
 		end
-		if os.clock() < base.bloqueadoHasta or base.dueno ~= z.dueno then
+		if protegida(base) or base.dueno ~= z.dueno then
 			huir() -- la granja está protegida: se rinde
 			return
 		end
@@ -1260,6 +1513,51 @@ local function darBate(plr)
 end
 
 ------------------------------------------------------------------
+-- CAMINADORA: el jugador corre fijo en el centro de la banda
+--   El servidor guarda quién está corriendo; el cliente lo mantiene en el centro
+--   y lo hace correr en el lugar (ver RobaHuevos_Cliente).
+------------------------------------------------------------------
+local eventoSalirCaminadora = Instance.new("RemoteEvent")
+eventoSalirCaminadora.Name = "SalirCaminadora"
+eventoSalirCaminadora.Parent = ReplicatedStorage
+
+local function centroCaminadora(base)
+	return base.tcf * CFrame.new(0, 4.2, 0)
+end
+
+function entrarCaminadora(plr, base)
+	if plr ~= base.dueno or cargando[plr] or enCaminadora[plr] then
+		return
+	end
+	local char = plr.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then
+		return
+	end
+	hum.Sit = false
+	enCaminadora[plr] = base
+	char:PivotTo(centroCaminadora(base))
+	plr:SetAttribute("CentroCaminadora", centroCaminadora(base))
+end
+
+local function salirCaminadora(plr, sinMover)
+	local base = enCaminadora[plr]
+	if not base then
+		return
+	end
+	enCaminadora[plr] = nil
+	plr:SetAttribute("CentroCaminadora", nil)
+	local char = plr.Character
+	if char and not sinMover then
+		char:PivotTo(base.tcf * CFrame.new(5.5, 4, 0))
+	end
+end
+
+eventoSalirCaminadora.OnServerEvent:Connect(function(plr)
+	salirCaminadora(plr)
+end)
+
+------------------------------------------------------------------
 -- TIENDA
 ------------------------------------------------------------------
 local function actualizarAtributosTienda(plr)
@@ -1271,6 +1569,9 @@ local function actualizarAtributosTienda(plr)
 	plr:SetAttribute("PrecioCierre", CONFIG.PRECIOS_CIERRE[e.cierre + 1] or -1)
 	plr:SetAttribute("NivelCerca", e.cerca)
 	plr:SetAttribute("PrecioCerca", CONFIG.PRECIOS_CERCA[e.cerca + 1] or -1)
+	plr:SetAttribute("NivelAmpliar", e.ampliacion)
+	plr:SetAttribute("PrecioAmpliar", CONFIG.PRECIOS_AMPLIACION[e.ampliacion + 1] or -1)
+	plr:SetAttribute("EscudoHasta", e.escudoHasta)
 	for nombre in pairs(CONFIG.PASES) do
 		plr:SetAttribute("Pase_" .. nombre, e.pases[nombre] == true)
 	end
@@ -1284,6 +1585,51 @@ local function aplicarPase(plr, nombre)
 	elseif nombre == "Dinero2x" then
 		notificar(plr, "💰 ¡Ahora ganas el doble de dinero!")
 	end
+end
+
+local function ampliarGranja(plr)
+	local e = estado[plr]
+	if not e or not CONFIG.PRECIOS_AMPLIACION[e.ampliacion + 1] then
+		return false
+	end
+	e.ampliacion += 1
+	local base = basesDe[plr]
+	if base then
+		aplicarAmpliacion(base, e.ampliacion)
+		notificar(plr, "🏗️ ¡Granja ampliada! Ahora puedes tener hasta " .. maxNidos(base) .. " nidos")
+	end
+	actualizarAtributosTienda(plr)
+	return true
+end
+
+local function darEscudo(plr, item)
+	local e = estado[plr]
+	local escudo = CONFIG.ESCUDOS[item]
+	if not e or not escudo then
+		return
+	end
+	-- si ya tenías escudo, el tiempo se suma
+	e.escudoHasta = math.max(os.time(), e.escudoHasta or 0) + escudo.segundos
+	notificar(plr, "🛡️ ¡Escudo de " .. escudo.nombre .. " activado! Nadie puede entrar a tu granja")
+	actualizarAtributosTienda(plr)
+end
+
+-- compra con Robux (productos de desarrollador): se entrega en ProcessReceipt
+local function comprarRobux(plr, item)
+	local e = estado[plr]
+	if not e then
+		return
+	end
+	if item == "Ampliar" and not CONFIG.PRECIOS_AMPLIACION[e.ampliacion + 1] then
+		notificar(plr, "Tu granja ya está al máximo.")
+		return
+	end
+	local id = CONFIG.PRODUCTOS[item]
+	if not id or id == 0 then
+		notificar(plr, "Este producto aún no está configurado (pon su ID en CONFIG.PRODUCTOS).")
+		return
+	end
+	MarketplaceService:PromptProductPurchase(plr, id)
 end
 
 function comprarItem(plr, item)
@@ -1322,6 +1668,26 @@ function comprarItem(plr, item)
 			aplicarCerca(base)
 		end
 		notificar(plr, "⚡ ¡Cerca eléctrica nivel " .. e.cerca .. "! " .. math.floor(CONFIG.PROB_CERCA[e.cerca] * 100) .. " % de atrapar ladrones")
+	elseif item == "Ampliar" then
+		local precio = CONFIG.PRECIOS_AMPLIACION[e.ampliacion + 1]
+		if not precio then
+			notificar(plr, "Tu granja ya está al máximo.")
+			return
+		end
+		if d.Value < precio then
+			notificar(plr, "Necesitas $" .. formato(precio) .. " (o cómprala con Robux: tecla F)")
+			return
+		end
+		d.Value -= precio
+		ampliarGranja(plr)
+	elseif CONFIG.ESCUDOS[item] then
+		local escudo = CONFIG.ESCUDOS[item]
+		if d.Value < escudo.precio then
+			notificar(plr, "Necesitas $" .. formato(escudo.precio) .. " (o cómpralo con Robux: tecla F)")
+			return
+		end
+		d.Value -= escudo.precio
+		darEscudo(plr, item)
 	else
 		local id = CONFIG.PASES[item]
 		if tienePase(plr, item) then
@@ -1396,8 +1762,8 @@ do
 	crearCartel(marca, "🛒 TIENDA 🛒", 80, 0, 320)
 end
 
-local function puesto(item, z, titulo, descripcion, color, forma)
-	local pos = Vector3.new(PX - 4, SUELO_Y, C.Z + z)
+local function puesto(item, x, z, titulo, descripcion, color, forma, conRobux, textoDinero)
+	local pos = Vector3.new(PX + x, SUELO_Y, C.Z + z)
 	crearParte({ Name = "Puesto", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3, 4.5, 4.5), CFrame = CFrame.new(pos + Vector3.new(0, 1.9, 0)) * VERTICAL, Color = Color3.fromRGB(240, 235, 225), Material = Enum.Material.Marble })
 	local icono = crearParte({ Name = "Icono", Shape = forma or Enum.PartType.Block, Size = Vector3.new(2.2, 2.2, 2.2), CFrame = CFrame.new(pos + Vector3.new(0, 5, 0)), Color = color, Material = Enum.Material.Neon, CanCollide = false })
 	icono:SetAttribute("Item", item)
@@ -1405,7 +1771,7 @@ local function puesto(item, z, titulo, descripcion, color, forma)
 	crearCartel(icono, titulo .. "\n" .. descripcion, 70, 3.8, 240)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "PromptTienda"
-	prompt.ActionText = "Comprar"
+	prompt.ActionText = textoDinero or "Comprar"
 	prompt.ObjectText = titulo
 	prompt.HoldDuration = 0.5
 	prompt.MaxActivationDistance = 10
@@ -1414,13 +1780,37 @@ local function puesto(item, z, titulo, descripcion, color, forma)
 		comprarItem(plr, item)
 	end)
 	prompt.Parent = icono
+	if conRobux then
+		-- segundo botón (tecla F) para comprar al instante con Robux
+		local pRobux = Instance.new("ProximityPrompt")
+		pRobux.Name = "PromptRobux"
+		pRobux.ActionText = "Comprar con Robux ⚡"
+		pRobux.ObjectText = titulo
+		pRobux.KeyboardKeyCode = Enum.KeyCode.F
+		pRobux.HoldDuration = 0.5
+		pRobux.MaxActivationDistance = 10
+		pRobux.RequiresLineOfSight = false
+		pRobux.UIOffset = Vector2.new(0, 80)
+		pRobux.Triggered:Connect(function(plr)
+			comprarRobux(plr, item)
+		end)
+		pRobux.Parent = icono
+	end
 end
 
-puesto("Cierre", -16, "🔒 Cierre largo", "Tu granja se cierra más tiempo", Color3.fromRGB(170, 170, 180))
-puesto("Cerca", -8, "⚡ Cerca eléctrica", "Electrocuta a los ladrones", ELECTRICO)
-puesto("Dinero2x", 0, "💰 x2 Dinero (Robux)", "Ganas el doble para siempre", Color3.fromRGB(80, 230, 100), Enum.PartType.Ball)
-puesto("BateDorado", 8, "🏏 Bate dorado (Robux)", "Más alcance y fuerza", Color3.fromRGB(255, 205, 40), Enum.PartType.Cylinder)
-puesto("CaminadoraVIP", 16, "🏃 Caminadora VIP (Robux)", "Pasos x2", Color3.fromRGB(170, 90, 255))
+-- fila de adelante: mejoras y Game Passes
+puesto("Cierre", -4, -16, "🔒 Cierre largo", "Tu granja se cierra más tiempo", Color3.fromRGB(170, 170, 180))
+puesto("Cerca", -4, -8, "⚡ Cerca eléctrica", "Electrocuta a los ladrones", ELECTRICO)
+puesto("Dinero2x", -4, 0, "💰 x2 Dinero (Robux)", "Ganas el doble para siempre", Color3.fromRGB(80, 230, 100), Enum.PartType.Ball)
+puesto("BateDorado", -4, 8, "🏏 Bate dorado (Robux)", "Más alcance y fuerza", Color3.fromRGB(255, 205, 40), Enum.PartType.Cylinder)
+puesto("CaminadoraVIP", -4, 16, "🏃 Caminadora VIP (Robux)", "Pasos x2", Color3.fromRGB(170, 90, 255))
+
+-- fila de atrás: ampliación y escudos (dinero del juego con E o Robux con F)
+puesto("Ampliar", -14, -16, "🏗️ Ampliar granja", "+6 nidos detrás del granero", Color3.fromRGB(205, 150, 90), nil, true)
+for i, item in ipairs({ "Escudo10m", "Escudo30m", "Escudo1d", "Escudo2d" }) do
+	local escudo = CONFIG.ESCUDOS[item]
+	puesto(item, -14, -16 + i * 8, "🛡️ Escudo " .. escudo.nombre, "Nadie puede entrar a tu granja", Color3.fromRGB(120, 200, 255), Enum.PartType.Ball, true, "Comprar $" .. formato(escudo.precio))
+end
 
 -- huevo dorado gigante para renacer
 local promptRenacer
@@ -1693,6 +2083,8 @@ local function guardarDatos(plr)
 			pasos = e.pasos,
 			cierre = e.cierre,
 			cerca = e.cerca,
+			ampliacion = e.ampliacion,
+			escudoHasta = e.escudoHasta,
 			misiones = e.misiones,
 		})
 	end)
@@ -1707,6 +2099,32 @@ local function guardarDatos(plr)
 end
 
 ------------------------------------------------------------------
+-- COMPRAS CON ROBUX (productos de desarrollador)
+------------------------------------------------------------------
+MarketplaceService.ProcessReceipt = function(recibo)
+	local plr = Players:GetPlayerByUserId(recibo.PlayerId)
+	-- si el jugador no está o sus datos aún no cargan, Roblox lo reintentará después
+	if not plr or datosCargados[plr] == nil then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	for item, id in pairs(CONFIG.PRODUCTOS) do
+		if id ~= 0 and id == recibo.ProductId then
+			if item == "Ampliar" then
+				if not ampliarGranja(plr) then
+					-- ya estaba al máximo: se le devuelve el valor en dinero del juego
+					darDinero(plr, CONFIG.PRECIOS_AMPLIACION[#CONFIG.PRECIOS_AMPLIACION])
+				end
+			else
+				darEscudo(plr, item)
+			end
+			guardarDatos(plr)
+			return Enum.ProductPurchaseDecision.PurchaseGranted
+		end
+	end
+	return Enum.ProductPurchaseDecision.NotProcessedYet
+end
+
+------------------------------------------------------------------
 -- JUGADORES
 ------------------------------------------------------------------
 local function alAparecer(plr, char)
@@ -1718,6 +2136,7 @@ local function alAparecer(plr, char)
 	aplicarVelocidad(plr)
 	hum.Died:Connect(function()
 		soltarHuevo(plr, false)
+		salirCaminadora(plr, true)
 	end)
 	local base = basesDe[plr]
 	if base then
@@ -1739,7 +2158,7 @@ local function alEntrar(plr)
 	rv.Parent = ls
 	ls.Parent = plr
 
-	local e = { pasos = 0, cierre = 1, cerca = 0, pases = {}, misiones = nil, ultimoEnvio = 0 }
+	local e = { pasos = 0, cierre = 1, cerca = 0, ampliacion = 0, escudoHasta = 0, pases = {}, misiones = nil, ultimoEnvio = 0 }
 	estado[plr] = e
 
 	local base
@@ -1779,8 +2198,11 @@ local function alEntrar(plr)
 		e.cierre = math.clamp(datos.cierre or 1, 1, #CONFIG.DURACIONES_CIERRE)
 		e.cerca = math.clamp(datos.cerca or 0, 0, #CONFIG.PROB_CERCA)
 		e.misiones = datos.misiones
+		e.ampliacion = math.clamp(datos.ampliacion or 0, 0, #CONFIG.PRECIOS_AMPLIACION)
+		e.escudoHasta = datos.escudoHasta or 0
 		if base then
-			aplicarNidos(base, math.clamp(datos.nidos or CONFIG.NIDOS_INICIALES, CONFIG.NIDOS_INICIALES, #base.ranuras))
+			aplicarAmpliacion(base, e.ampliacion)
+			aplicarNidos(base, math.clamp(datos.nidos or CONFIG.NIDOS_INICIALES, CONFIG.NIDOS_INICIALES, maxNidos(base)))
 			for _, h in ipairs(datos.huevos or {}) do
 				local info = type(h) == "number" and { r = h, g = false, m = 0 } or { r = h.r, g = h.g == true, m = h.m or 0 }
 				local idx = ranuraLibre(base)
@@ -1826,13 +2248,15 @@ Players.PlayerRemoving:Connect(function(plr)
 		base.bloqueadoHasta = 0
 		base.listoBloqueo = 0
 		base.cartel.Text = "Granja libre"
-		aplicarNidos(base, CONFIG.NIDOS_INICIALES)
+		base.nidos = CONFIG.NIDOS_INICIALES
+		aplicarAmpliacion(base, 0)
 		aplicarCerca(base)
 		aplicarCaminadora(base)
 	end
 	if zorro and zorro.golpeadores then
 		zorro.golpeadores[plr] = nil
 	end
+	enCaminadora[plr] = nil
 	datosCargados[plr] = nil
 	estado[plr] = nil
 end)
@@ -1950,7 +2374,7 @@ task.spawn(function()
 			local dueno = base.dueno
 			if dueno then
 				-- cierre: expulsa a los intrusos
-				if ahora < base.bloqueadoHasta then
+				if protegida(base) then
 					for _, p in ipairs(Players:GetPlayers()) do
 						local hrp = p ~= dueno and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
 						if hrp and dentroDeBase(base, hrp.Position) then
@@ -1961,27 +2385,26 @@ task.spawn(function()
 					end
 				end
 
-				-- caminadora: cuenta pasos si el dueño camina sobre la banda
+				-- caminadora: cuenta pasos mientras el dueño corre en ella
 				local e = estado[dueno]
-				local char = dueno.Character
-				local hrp = char and char:FindFirstChild("HumanoidRootPart")
-				local hum = char and char:FindFirstChildOfClass("Humanoid")
-				if e and hrp and hum and hum.Health > 0 then
-					local p = base.banda.CFrame:PointToObjectSpace(hrp.Position)
-					if math.abs(p.X) < 2.8 and math.abs(p.Z) < 6.2 and p.Y > 0 and p.Y < 6 then
-						local vBanda = base.banda.AssemblyLinearVelocity
-						local caminando = hum.MoveDirection.Magnitude > 0.1 or (hrp.AssemblyLinearVelocity - vBanda).Magnitude > vBanda.Magnitude * 0.5
-						if caminando then
-							local nivelAntes = nivelCaminadora(e.pasos)
-							local suma = tienePase(dueno, "CaminadoraVIP") and 2 or 1
-							e.pasos += suma
-							progresoMision(dueno, "pasos", suma)
-							local nivel = nivelCaminadora(e.pasos)
-							if nivel > nivelAntes then
-								aplicarVelocidad(dueno)
-								aplicarCaminadora(base)
-								notificarTodos("⚡ " .. dueno.DisplayName .. " subió su caminadora a nivel " .. nivel .. " (velocidad " .. CAMINADORA[nivel].vel .. ")")
-							end
+				if e and enCaminadora[dueno] == base then
+					local char = dueno.Character
+					local hrp = char and char:FindFirstChild("HumanoidRootPart")
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					local centro = base.tcf.Position
+					local lejos = not hrp or Vector3.new(hrp.Position.X - centro.X, 0, hrp.Position.Z - centro.Z).Magnitude > 4
+					if lejos or not hum or hum.Health <= 0 then
+						salirCaminadora(dueno, true)
+					else
+						local nivelAntes = nivelCaminadora(e.pasos)
+						local suma = tienePase(dueno, "CaminadoraVIP") and 2 or 1
+						e.pasos += suma
+						progresoMision(dueno, "pasos", suma)
+						local nivel = nivelCaminadora(e.pasos)
+						if nivel > nivelAntes then
+							aplicarVelocidad(dueno)
+							aplicarCaminadora(base)
+							notificarTodos("⚡ " .. dueno.DisplayName .. " subió su caminadora a nivel " .. nivel .. " (velocidad " .. CAMINADORA[nivel].vel .. ")")
 						end
 					end
 				end
@@ -1999,20 +2422,29 @@ task.spawn(function()
 			local dueno = base.dueno
 			if not dueno then
 				base.textoBloqueo.Text = ""
+				estiloCierre(base, COLOR_ESPERA, "🔒")
 				base.barrera.Transparency = 1
 				base.textoCaminadora.Text = "🏃 Caminadora"
 			else
-				if ahora < base.bloqueadoHasta then
+				local e = estado[dueno]
+				local escudo = e and (e.escudoHasta or 0) - os.time() or 0
+				if escudo > 0 then
+					base.textoBloqueo.Text = "🛡️ Escudo " .. formatoDuracion(escudo)
+					estiloCierre(base, COLOR_PROTEGIDA, "🛡️")
+					base.barrera.Transparency = 0.3
+				elseif ahora < base.bloqueadoHasta then
 					base.textoBloqueo.Text = "🛡️ " .. math.ceil(base.bloqueadoHasta - ahora) .. " s"
+					estiloCierre(base, COLOR_PROTEGIDA, "🛡️")
 					base.barrera.Transparency = 0.3
 				elseif ahora < base.listoBloqueo then
 					base.textoBloqueo.Text = "Espera " .. math.ceil(base.listoBloqueo - ahora) .. " s"
+					estiloCierre(base, COLOR_ESPERA, "⏳")
 					base.barrera.Transparency = 1
 				else
 					base.textoBloqueo.Text = "🔒 Cerrar granja"
+					estiloCierre(base, COLOR_CERRAR, "🔒")
 					base.barrera.Transparency = 1
 				end
-				local e = estado[dueno]
 				if e then
 					local n = nivelCaminadora(e.pasos)
 					local sig = CAMINADORA[n + 1]
