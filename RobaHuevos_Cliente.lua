@@ -49,6 +49,7 @@ end
 local SOLO_DUENO = { PromptVender = true, PromptNido = true, PromptCorrer = true }
 local SOLO_OTROS = { PromptRobar = true }
 local promptsTienda = {}
+local actualizadores = {} -- se vuelven a ejecutar cuando cambia tu aliado
 
 -- mejoras con precio según tu nivel (el servidor manda "Precio<Item>", -1 = máximo)
 local MEJORAS = { Cierre = "Mejorar", Cerca = "Mejorar", Ampliar = "Ampliar" }
@@ -86,33 +87,68 @@ local function ajustarPrompt(p)
 	end
 	local objeto = p.Parent
 	local function actualizar()
-		local esMio = objeto:GetAttribute("DuenoId") == jugador.UserId
+		if not p.Parent then
+			return
+		end
+		local dueno = objeto:GetAttribute("DuenoId")
+		local esMio = dueno == jugador.UserId
+		local esDeAliado = dueno ~= nil and dueno ~= 0 and dueno == jugador:GetAttribute("AliadoId")
 		if SOLO_DUENO[p.Name] then
 			p.Enabled = esMio
 		else
-			p.Enabled = not esMio
+			p.Enabled = not esMio and not esDeAliado -- a tu aliado no le puedes robar
 		end
 	end
 	actualizar()
 	objeto:GetAttributeChangedSignal("DuenoId"):Connect(actualizar)
+	table.insert(actualizadores, { prompt = p, fn = actualizar })
+end
+
+-- botón de alianza (tecla G) en los demás jugadores
+local function ajustarPromptAliado(p)
+	local function actualizar()
+		if not p.Parent then
+			return
+		end
+		local id = p:GetAttribute("JugadorId")
+		p.Enabled = id ~= jugador.UserId
+		p.ActionText = (id == jugador:GetAttribute("AliadoId")) and "Terminar alianza" or "Alianza 🤝"
+	end
+	actualizar()
+	table.insert(actualizadores, { prompt = p, fn = actualizar })
+end
+
+local function revisarPrompt(d)
+	if not d:IsA("ProximityPrompt") then
+		return
+	end
+	if d.Name == "PromptAliado" then
+		ajustarPromptAliado(d)
+	else
+		ajustarPrompt(d)
+	end
 end
 
 for _, d in ipairs(workspace:GetDescendants()) do
-	if d:IsA("ProximityPrompt") then
-		ajustarPrompt(d)
-	end
+	revisarPrompt(d)
 end
-workspace.DescendantAdded:Connect(function(d)
-	if d:IsA("ProximityPrompt") then
-		ajustarPrompt(d)
-	end
-end)
+workspace.DescendantAdded:Connect(revisarPrompt)
 
 jugador.AttributeChanged:Connect(function(nombre)
 	if nombre:sub(1, 6) == "Precio" or nombre:sub(1, 5) == "Pase_" then
 		for _, p in ipairs(promptsTienda) do
 			actualizarTienda(p)
 		end
+	elseif nombre == "AliadoId" then
+		-- volver a revisar los prompts y olvidar los que ya no existen
+		local vivos = {}
+		for _, a in ipairs(actualizadores) do
+			if a.prompt.Parent then
+				a.fn()
+				table.insert(vivos, a)
+			end
+		end
+		actualizadores = vivos
 	end
 end)
 
@@ -133,13 +169,15 @@ RunService.RenderStepped:Connect(function()
 		end
 		parte.CFrame = CFrame.new(pos + Vector3.new(0, math.sin(t * 2) * 0.4, 0)) * CFrame.Angles(0, t, 0)
 	end
-	-- franjas de la banda: avanzan hacia atrás para que parezca que gira
+	-- flechas de la banda: avanzan hacia atrás para que parezca que gira
 	for _, franja in ipairs(CollectionService:GetTagged("FranjaCaminadora")) do
 		local banda = franja.Parent and franja.Parent:FindFirstChild("Banda")
 		if banda then
 			local vel = banda:GetAttribute("Velocidad") or 16
-			local z = ((franja:GetAttribute("Z0") or 0) + 6 + t * vel * 0.6) % 12 - 6
-			franja.CFrame = banda.CFrame * CFrame.new(0, 0.17, z)
+			local z = ((franja:GetAttribute("Z0") or 0) + 5.5 + t * vel * 0.6) % 11 - 5.5
+			local x = franja:GetAttribute("X0") or 0
+			local giro = math.rad(franja:GetAttribute("Giro") or 0)
+			franja.CFrame = banda.CFrame * CFrame.new(x, 0.17, z) * CFrame.Angles(0, giro, 0)
 		end
 	end
 end)
@@ -248,7 +286,7 @@ end)
 ------------------------------------------------------------------
 -- Misiones del día (panel a la izquierda)
 ------------------------------------------------------------------
-local panelMisiones = panel(gui, UDim2.fromOffset(270, 190), UDim2.new(0, 10, 0.5, 0), Vector2.new(0, 0.5))
+local panelMisiones = panel(gui, UDim2.fromOffset(270, 236), UDim2.new(0, 10, 0.5, 0), Vector2.new(0, 0.5))
 etiqueta(panelMisiones, DORADO, UDim2.new(1, -16, 0, 28), UDim2.fromOffset(8, 6)).Text = "📋 Misiones del día"
 local filas = {}
 for i = 1, 3 do
@@ -268,6 +306,18 @@ for i = 1, 3 do
 	local cuenta = etiqueta(fondoBarra, Color3.new(1, 1, 1), UDim2.fromScale(1, 1), UDim2.fromScale(0, 0))
 	filas[i] = { texto = texto, barra = barra, cuenta = cuenta }
 end
+
+-- racha diaria y aliado (debajo de las misiones)
+local etiquetaRacha = etiqueta(panelMisiones, Color3.fromRGB(255, 170, 80), UDim2.new(1, -16, 0, 20), UDim2.fromOffset(8, 186), Enum.TextXAlignment.Left)
+local etiquetaAliado = etiqueta(panelMisiones, Color3.fromRGB(150, 230, 255), UDim2.new(1, -16, 0, 20), UDim2.fromOffset(8, 208), Enum.TextXAlignment.Left)
+local function actualizarExtras()
+	etiquetaRacha.Text = "🔥 Racha: " .. (jugador:GetAttribute("Racha") or 0) .. " día(s) seguidos"
+	local aliado = jugador:GetAttribute("AliadoNombre") or ""
+	etiquetaAliado.Text = aliado ~= "" and ("🤝 Aliado: " .. aliado .. " (+10 %)") or "🤝 Sin aliado (pulsa G sobre alguien)"
+end
+actualizarExtras()
+jugador:GetAttributeChangedSignal("Racha"):Connect(actualizarExtras)
+jugador:GetAttributeChangedSignal("AliadoNombre"):Connect(actualizarExtras)
 
 local misiones = {}
 local function dibujarMisiones()
@@ -333,8 +383,135 @@ local function mostrarAviso(texto, duracion)
 	end)
 end
 
-ReplicatedStorage:WaitForChild("Notificar").OnClientEvent:Connect(function(texto)
-	mostrarAviso(texto)
+------------------------------------------------------------------
+-- Sonidos y música
+--   Los efectos usan sonidos que ya vienen dentro de Roblox (rbxasset://).
+--   Para la música: en la Caja de herramientas > Audio pulsa "Insertar" en una canción,
+--   llama "Musica" al Sound que aparece y muévelo a ReplicatedStorage.
+--   (O pega su ID en MUSICA_ID, por ejemplo "rbxassetid://1234567890".)
+------------------------------------------------------------------
+local SoundService = game:GetService("SoundService")
+local MUSICA_ID = "rbxassetid://125605888977822" -- Success Mindset Beats
+local SONIDOS = {
+	Comprar = { id = "rbxasset://sounds/electronicpingshort.wav", tono = 1.2 },
+	Recoger = { id = "rbxasset://sounds/electronicpingshort.wav", tono = 1.6 },
+	Robo = { id = "rbxasset://sounds/electronicpingshort.wav", tono = 0.8 },
+	Alarma = { id = "rbxasset://sounds/uuhhh.mp3", tono = 1 },
+	Golpe = { id = "rbxasset://sounds/swordslash.wav", tono = 1 },
+	Eclosion = { id = "rbxasset://sounds/electronicpingshort.wav", tono = 1.9 },
+	Nivel = { id = "rbxasset://sounds/electronicpingshort.wav", tono = 0.6 },
+	Mision = { id = "rbxasset://sounds/electronicpingshort.wav", tono = 1.4 },
+	Zorro = { id = "rbxasset://sounds/swordlunge.wav", tono = 0.7 },
+	Misterioso = { id = "rbxasset://sounds/electronicpingshort.wav", tono = 2 },
+	Tic = { id = "rbxasset://sounds/electronicpingshort.wav", tono = 2.5 },
+}
+local silencio = false
+
+local function sonar(nombre, volumen)
+	local s = SONIDOS[nombre]
+	if silencio or not s or s.id == "" then
+		return
+	end
+	local sonido = Instance.new("Sound")
+	sonido.SoundId = s.id
+	sonido.PlaybackSpeed = s.tono or 1
+	sonido.Volume = volumen or 0.6
+	sonido.Parent = SoundService
+	SoundService:PlayLocalSound(sonido)
+	task.delay(5, function()
+		sonido:Destroy()
+	end)
+end
+
+-- La música sale de MUSICA_ID o, si está vacío, de un Sound llamado "Musica"
+-- que esté en ReplicatedStorage (así no hace falta copiar el ID: basta con insertarlo).
+local musica
+task.spawn(function()
+	if MUSICA_ID ~= "" then
+		musica = Instance.new("Sound")
+		musica.SoundId = MUSICA_ID
+	else
+		local plantilla = ReplicatedStorage:WaitForChild("Musica", 10)
+		if plantilla and plantilla:IsA("Sound") then
+			musica = plantilla:Clone()
+		end
+	end
+	if musica then
+		musica.Looped = true
+		musica.Volume = 0.25
+		musica.Parent = SoundService
+		if not silencio then
+			musica:Play()
+		end
+	end
+end)
+
+-- botón para silenciar todo
+local botonSonido = Instance.new("TextButton")
+botonSonido.Position = UDim2.new(0, 10, 0.5, -162)
+botonSonido.Size = UDim2.fromOffset(130, 34)
+botonSonido.BackgroundColor3 = MARRON
+botonSonido.BackgroundTransparency = 0.15
+botonSonido.Font = Enum.Font.FredokaOne
+botonSonido.TextScaled = true
+botonSonido.TextColor3 = Color3.new(1, 1, 1)
+botonSonido.Text = "🔊 Sonido"
+botonSonido.Parent = gui
+Instance.new("UICorner", botonSonido).CornerRadius = UDim.new(0, 10)
+botonSonido.Activated:Connect(function()
+	silencio = not silencio
+	botonSonido.Text = silencio and "🔇 Sin sonido" or "🔊 Sonido"
+	if musica then
+		if silencio then
+			musica:Pause()
+		else
+			musica:Resume()
+		end
+	end
+end)
+
+ReplicatedStorage:WaitForChild("Notificar").OnClientEvent:Connect(function(texto, sonido)
+	if texto then
+		mostrarAviso(texto)
+	end
+	if sonido then
+		sonar(sonido)
+	end
+end)
+
+------------------------------------------------------------------
+-- Huevo misterioso: ruleta de rarezas y resultado
+------------------------------------------------------------------
+local NOMBRES_RAREZA = { "Común", "Poco común", "Raro", "Épico", "Legendario", "Mítico", "Dorado" }
+local COLORES_RAREZA = {
+	Color3.fromRGB(240, 235, 220),
+	Color3.fromRGB(110, 220, 110),
+	Color3.fromRGB(80, 160, 255),
+	Color3.fromRGB(170, 90, 255),
+	Color3.fromRGB(255, 150, 30),
+	Color3.fromRGB(255, 80, 170),
+	Color3.fromRGB(255, 215, 0),
+}
+
+local ventanaRevelar = panel(gui, UDim2.fromOffset(380, 150), UDim2.fromScale(0.5, 0.42), Vector2.new(0.5, 0.5))
+ventanaRevelar.Visible = false
+etiqueta(ventanaRevelar, DORADO, UDim2.new(1, -20, 0, 34), UDim2.fromOffset(10, 10)).Text = "🎁 Huevo misterioso"
+local textoRevelar = etiqueta(ventanaRevelar, Color3.new(1, 1, 1), UDim2.new(1, -20, 0, 80), UDim2.fromOffset(10, 56))
+
+ReplicatedStorage:WaitForChild("Revelar").OnClientEvent:Connect(function(ri, nombre)
+	ventanaRevelar.Visible = true
+	for k = 1, 16 do
+		local i = math.random(#NOMBRES_RAREZA)
+		textoRevelar.Text = NOMBRES_RAREZA[i]
+		textoRevelar.TextColor3 = COLORES_RAREZA[i]
+		sonar("Tic", 0.3)
+		task.wait(0.05 + k * 0.012)
+	end
+	textoRevelar.Text = nombre
+	textoRevelar.TextColor3 = COLORES_RAREZA[ri] or Color3.new(1, 1, 1)
+	sonar("Misterioso")
+	task.wait(2.5)
+	ventanaRevelar.Visible = false
 end)
 
 mostrarAviso("🥚 Compra huevos en la cinta con E", 8)
@@ -369,23 +546,10 @@ local rellenoBoton = Instance.new("UIPadding", botonBajar)
 rellenoBoton.PaddingTop = UDim.new(0, 6)
 rellenoBoton.PaddingBottom = UDim.new(0, 6)
 
+-- El servidor se encarga de anclarte en el centro y de la animación de correr.
+-- Aquí solo se manejan la cámara, los controles y el botón para bajarse.
 local corriendo = false
-local pistaCorrer -- animación de correr que se reproduce en bucle
-
--- usa la misma animación de correr del personaje (sirve para R6 y R15)
-local function cargarAnimacionCorrer(char, hum)
-	local animator = hum:FindFirstChildOfClass("Animator")
-	local animate = char:FindFirstChild("Animate")
-	local run = animate and animate:FindFirstChild("run")
-	local anim = run and run:FindFirstChildOfClass("Animation")
-	if not animator or not anim then
-		return nil
-	end
-	local pista = animator:LoadAnimation(anim)
-	pista.Priority = Enum.AnimationPriority.Action
-	pista.Looped = true
-	return pista
-end
+local camara = workspace.CurrentCamera
 
 local function pedirBajar()
 	if corriendo then
@@ -414,29 +578,21 @@ RunService.Heartbeat:Connect(function()
 			if controles then
 				controles:Disable()
 			end
-			pistaCorrer = cargarAnimacionCorrer(char, hum)
-			if pistaCorrer then
-				pistaCorrer:Play(0.2)
-			end
+			camara.CameraType = Enum.CameraType.Scriptable
 		end
-		-- fijar en el centro mirando hacia la consola, sin moverse; la altura la deja la física
-		local adelante = centro.LookVector
-		local pos = Vector3.new(centro.X, hrp.Position.Y, centro.Z)
-		hrp.CFrame = CFrame.lookAt(pos, pos + Vector3.new(adelante.X, 0, adelante.Z))
-		hrp.AssemblyLinearVelocity = Vector3.new(0, hrp.AssemblyLinearVelocity.Y, 0)
-		-- las piernas van más rápido cuanto más alto el nivel de la caminadora
-		if pistaCorrer then
-			pistaCorrer:AdjustSpeed(math.max(1, hum.WalkSpeed / 16) * 1.1)
-		end
+		-- cámara cinemática: vista de costado que se mece despacio
+		local t = os.clock()
+		local desde = (centro * CFrame.new(-10 + math.sin(t * 0.5) * 1.5, 3.5 + math.sin(t * 0.8) * 0.5, -3)).Position
+		camara.CFrame = camara.CFrame:Lerp(CFrame.lookAt(desde, hrp.Position + Vector3.new(0, 0.5, -1)), 0.15)
 	elseif corriendo then
 		corriendo = false
 		botonBajar.Visible = false
 		if controles then
 			controles:Enable()
 		end
-		if pistaCorrer then
-			pistaCorrer:Stop(0.2)
-			pistaCorrer = nil
+		camara.CameraType = Enum.CameraType.Custom
+		if hum then
+			camara.CameraSubject = hum
 		end
 	end
 end)

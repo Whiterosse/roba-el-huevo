@@ -31,6 +31,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local Debris = game:GetService("Debris")
+local BadgeService = game:GetService("BadgeService")
 
 ------------------------------------------------------------------
 -- CONFIGURACIÓN
@@ -38,7 +39,7 @@ local Debris = game:GetService("Debris")
 local CONFIG = {
 	CENTRO = Vector3.new(0, 300, 0), -- el mapa se construye en el cielo para no chocar con tu escenario
 	DINERO_INICIAL = 100,
-	INTERVALO_HUEVOS = 10, -- segundos entre huevos en la cinta (en la hora dorada, la mitad)
+	INTERVALO_HUEVOS = 7, -- segundos entre huevos en la cinta (en la hora dorada, la mitad)
 	DURACION_CINTA = 40, -- segundos que tarda un huevo en cruzar la cinta
 	FACTOR_CARGANDO = 0.7, -- el ladrón va al 70 % de su velocidad
 	ESPERA_BLOQUEO = 20, -- tiempo tras el cierre antes de poder cerrar otra vez
@@ -102,6 +103,31 @@ local CONFIG = {
 		Escudo30m = 0,
 		Escudo1d = 0,
 		Escudo2d = 0,
+	},
+
+	-- Ganancias offline: porcentaje de tus ingresos mientras no estás (con un máximo de horas)
+	OFFLINE_PORCENTAJE = 0.25,
+	OFFLINE_MAX_HORAS = 8,
+
+	-- Racha diaria: premio = segundos de tus ingresos según el día (el día 7 da un huevo Mítico)
+	RACHA_SEGUNDOS = { 60, 120, 180, 300, 450, 600 },
+	RACHA_MINIMO = 500, -- mínimo por día (se multiplica por el número de día)
+
+	-- Huevo misterioso: precio y probabilidad de cada rareza (Común ... Dorado)
+	PRECIO_MISTERIOSO = 8000,
+	PESOS_MISTERIOSO = { 35, 25, 20, 12, 6, 1.7, 0.3 },
+
+	-- Aliados (equipos de 2): bono de ingresos para los dos mientras estén aliados
+	BONO_ALIADO = 0.1,
+
+	-- Insignias (Badges): créalas en create.roblox.com y pon aquí sus IDs (0 = sin configurar)
+	INSIGNIAS = {
+		PrimerRobo = 0, -- roba tu primer huevo
+		CaminadoraMaxima = 0, -- caminadora nivel 8
+		Cazazorros = 0, -- ahuyenta 10 zorros
+		PrimerRenacer = 0, -- renace por primera vez
+		Racha7 = 0, -- entra 7 días seguidos
+		HuevoDorado = 0, -- consigue un huevo Dorado
 	},
 }
 
@@ -168,14 +194,19 @@ local eventoMisiones = Instance.new("RemoteEvent")
 eventoMisiones.Name = "Misiones"
 eventoMisiones.Parent = ReplicatedStorage
 
-local function notificar(plr, texto)
+local eventoRevelar = Instance.new("RemoteEvent")
+eventoRevelar.Name = "Revelar"
+eventoRevelar.Parent = ReplicatedStorage
+
+-- texto puede ser nil (solo sonido); sonido es un nombre de la tabla SONIDOS del cliente
+local function notificar(plr, texto, sonido)
 	if plr and plr.Parent then
-		eventoNotificar:FireClient(plr, texto)
+		eventoNotificar:FireClient(plr, texto, sonido)
 	end
 end
 
-local function notificarTodos(texto)
-	eventoNotificar:FireAllClients(texto)
+local function notificarTodos(texto, sonido)
+	eventoNotificar:FireAllClients(texto, sonido)
 end
 
 local function formato(n)
@@ -234,12 +265,18 @@ local datosCargados = {} -- [jugador] = true si el DataStore cargó bien
 local horaDorada = false
 local zorro = nil -- zorro activo
 local enCaminadora = {} -- [jugador] = granja (corriendo en su caminadora)
+local aliados = {} -- [jugador] = su aliado (siempre en las dos direcciones)
+local invitaciones = {} -- [quien invita] = invitado
 
-local comprarItem, golpearZorro, intentarRobar, aplicarNidos, entrarCaminadora -- se definen más abajo
+local comprarItem, golpearZorro, intentarRobar, aplicarNidos, entrarCaminadora, salirCaminadora -- se definen más abajo
 
 local function tienePase(plr, nombre)
 	local e = estado[plr]
 	return e ~= nil and e.pases[nombre] == true
+end
+
+local function sonAliados(a, b)
+	return a ~= nil and b ~= nil and aliados[a] == b
 end
 
 local function multiplicador(plr)
@@ -248,7 +285,25 @@ local function multiplicador(plr)
 	if tienePase(plr, "Dinero2x") then
 		m *= 2
 	end
+	if aliados[plr] then
+		m *= 1 + CONFIG.BONO_ALIADO
+	end
 	return m
+end
+
+-- da una insignia una sola vez por sesión (Roblox ignora si ya la tiene)
+local function darInsignia(plr, nombre)
+	local id = CONFIG.INSIGNIAS[nombre]
+	local e = estado[plr]
+	if not id or id == 0 or not e or e.insignias[nombre] then
+		return
+	end
+	e.insignias[nombre] = true
+	task.spawn(function()
+		pcall(function()
+			BadgeService:AwardBadge(plr.UserId, id)
+		end)
+	end)
 end
 
 local function costoRenacer(plr)
@@ -349,7 +404,7 @@ local function progresoMision(plr, id, n)
 				completada = true
 				local premio = math.max(CONFIG.PREMIO_MISION_MINIMO, (plr:GetAttribute("IngresoSeg") or 0) * CONFIG.PREMIO_MISION_SEGUNDOS)
 				darDinero(plr, premio)
-				notificar(plr, "📋 ¡Misión completada! +$" .. formato(premio))
+				notificar(plr, "📋 ¡Misión completada! +$" .. formato(premio), "Mision")
 			end
 		end
 	end
@@ -767,66 +822,87 @@ local function aplicarCaminadora(base)
 		props.Parent = m
 		return crearParte(props, clase)
 	end
-	local brillo = n >= 6 and Enum.Material.Neon or Enum.Material.Metal
+	local brillo = n >= 2 and Enum.Material.Neon or Enum.Material.Metal
+	local acento = nv.detalle -- color del neón (cambia en cada nivel)
+	local oscuro = nv.marco:Lerp(Color3.new(0, 0, 0), 0.55)
+	local tenue = acento:Lerp(Color3.new(0, 0, 0), 0.5) -- neón más suave (no encandila)
 
-	-- nivel 1+: marco, banda, postes, pasamanos y consola (el corredor mira hacia la consola)
-	pieza({ Name = "Marco", Size = Vector3.new(6.4, 0.8, 13), Color = nv.marco, Material = Enum.Material.Metal }, CFrame.new(0, 0.4, 0))
-	local banda = pieza({ Name = "Banda", Size = Vector3.new(5, 0.3, 12), Color = nv.color, Material = nv.material }, CFrame.new(0, 0.95, 0))
+	-- Diseño tipo "portal": cubierta oscura con bordes de neón, banda negra con flechas
+	-- que se mueven, pantalla brillante al frente, pasamanos de neón y consola al costado.
+	-- El corredor está en el centro y mira hacia la pantalla (z local negativo).
+
+	-- cubierta, bordes y rodillos
+	pieza({ Name = "Cubierta", Size = Vector3.new(6.6, 0.9, 14), Color = oscuro, Material = Enum.Material.SmoothPlastic }, CFrame.new(0, 0.45, 0))
+	for _, x in ipairs({ -3.15, 3.15 }) do
+		pieza({ Name = "Borde", Size = Vector3.new(0.5, 1, 14.2), Color = nv.marco, Material = Enum.Material.Metal }, CFrame.new(x, 0.55, 0))
+		pieza({ Name = "LuzBorde", Size = Vector3.new(0.12, 0.2, 14.2), Color = tenue, Material = Enum.Material.Neon }, CFrame.new(x * 1.07, 0.8, 0))
+	end
+	for _, z in ipairs({ -7.1, 7.1 }) do
+		pieza({ Name = "Rodillo", Shape = Enum.PartType.Cylinder, Size = Vector3.new(6.2, 1.1, 1.1), Color = nv.marco, Material = Enum.Material.Metal }, CFrame.new(0, 0.55, z))
+	end
+	pieza({ Name = "LuzTrasera", Size = Vector3.new(1.6, 0.35, 0.1), Color = tenue, Material = Enum.Material.Neon }, CFrame.new(2.1, 0.55, 7.68))
+
+	-- banda negra con flechas de neón (el cliente las mueve hacia atrás)
+	local banda = pieza({ Name = "Banda", Size = Vector3.new(5, 0.3, 12), Color = Color3.fromRGB(20, 22, 28), Material = Enum.Material.Fabric }, CFrame.new(0, 0.95, 0))
 	banda:SetAttribute("Velocidad", nv.vel)
-	for k = 0, 5 do
-		-- franjas que el cliente mueve para que la banda parezca girar
-		local z0 = -6 + k * 2
-		local franja = pieza({ Name = "Franja", Size = Vector3.new(4.8, 0.05, 0.5), Color = nv.detalle, Material = Enum.Material.SmoothPlastic, CanCollide = false, CanQuery = false }, CFrame.new(0, 1.12, z0))
-		franja:SetAttribute("Z0", z0)
-		CollectionService:AddTag(franja, "FranjaCaminadora")
-	end
-	for _, x in ipairs({ -3, 3 }) do
-		for _, z in ipairs({ -5.5, 5.5 }) do
-			pieza({ Name = "Poste", Size = Vector3.new(0.4, 4, 0.4), Color = nv.detalle, Material = Enum.Material.Metal }, CFrame.new(x, 2.8, z))
+	for k = 0, 4 do
+		local z0 = -5.5 + k * 2.2
+		for _, lado in ipairs({ -1, 1 }) do
+			local barra = pieza({ Name = "Franja", Size = Vector3.new(2.5, 0.05, 0.4), Color = tenue, Material = Enum.Material.Neon, CanCollide = false, CanQuery = false, CanTouch = false }, CFrame.new(lado, 1.12, z0))
+			barra:SetAttribute("Z0", z0)
+			barra:SetAttribute("X0", lado)
+			barra:SetAttribute("Giro", -lado * 30) -- las dos barras forman una flecha ">"
+			CollectionService:AddTag(barra, "FranjaCaminadora")
 		end
-		pieza({ Name = "Pasamanos", Size = Vector3.new(0.4, 0.4, 11.4), Color = nv.detalle, Material = brillo }, CFrame.new(x, 4.8, 0))
 	end
-	pieza({ Name = "PosteConsola", Size = Vector3.new(0.6, 4.5, 0.6), Color = nv.marco, Material = Enum.Material.Metal }, CFrame.new(0, 3, -6.3))
-	local consola = pieza({ Name = "Consola", Size = Vector3.new(5, 2, 0.5), Color = Color3.fromRGB(30, 30, 40), Material = Enum.Material.Glass }, CFrame.new(0, 5.6, -6.3))
 
-	-- nivel 3+: tiras de luz en los costados
-	if n >= 3 then
-		for _, x in ipairs({ -3.25, 3.25 }) do
-			pieza({ Name = "Luz", Size = Vector3.new(0.15, 0.3, 13), Color = nv.detalle, Material = Enum.Material.Neon }, CFrame.new(x, 0.6, 0))
+	-- pantalla-portal al frente
+	pieza({ Name = "MarcoPantalla", Size = Vector3.new(6.2, 7.4, 0.6), Color = nv.marco, Material = Enum.Material.Metal }, CFrame.new(0, 4.6, -7.25))
+	-- pantalla clara y sin brillo para que se lean las letras oscuras
+	local pantalla = pieza({ Name = "Pantalla", Size = Vector3.new(5.2, 6.4, 0.2), Color = acento:Lerp(Color3.new(1, 1, 1), 0.45), Material = Enum.Material.SmoothPlastic }, CFrame.new(0, 4.6, -6.9))
+	local chispas = Instance.new("ParticleEmitter")
+	chispas.Color = ColorSequence.new(acento)
+	chispas.LightEmission = 1
+	chispas.Size = NumberSequence.new(0.25, 0)
+	chispas.Lifetime = NumberRange.new(0.6, 1.2)
+	chispas.Rate = 4 + n * 3
+	chispas.Speed = NumberRange.new(1, 3)
+	chispas.SpreadAngle = Vector2.new(180, 180)
+	chispas.Parent = pantalla
+
+	-- pasamanos de neón a los lados (de la pantalla hacia el corredor)
+	for _, x in ipairs({ -2.95, 2.95 }) do
+		pieza({ Name = "PostePasamanos", Size = Vector3.new(0.4, 3.4, 0.4), Color = nv.marco, Material = Enum.Material.Metal }, CFrame.new(x, 2.6, -4.8))
+		pieza({ Name = "Pasamanos", Size = Vector3.new(0.45, 0.45, 5.2), Color = tenue, Material = brillo }, CFrame.new(x, 4.4, -4.4))
+		pieza({ Name = "Codo", Size = Vector3.new(0.45, 0.45, 2.2), Color = tenue, Material = brillo }, CFrame.new(x, 3.95, -1.4) * CFrame.Angles(math.rad(25), 0, 0))
+	end
+
+	-- consola al costado derecho
+	local consola = pieza({ Name = "Consola", Size = Vector3.new(1.2, 3, 2.2), Color = oscuro, Material = Enum.Material.SmoothPlastic }, CFrame.new(3.95, 2.4, -5.4))
+	pieza({ Name = "Display", Size = Vector3.new(0.1, 1.6, 1.4), Color = tenue, Material = Enum.Material.Neon }, CFrame.new(4.57, 2.9, -5.4))
+	pieza({ Name = "Boton", Shape = Enum.PartType.Ball, Size = Vector3.new(0.6, 0.6, 0.6), Color = tenue, Material = Enum.Material.Neon }, CFrame.new(4.57, 1.6, -5.4))
+
+	-- extras que se ganan al subir de nivel
+	if n >= 3 then -- luz bajo la caminadora
+		pieza({ Name = "LuzPiso", Size = Vector3.new(7.6, 0.1, 15.4), Color = tenue, Material = Enum.Material.Neon, Transparency = 0.7, CanCollide = false }, CFrame.new(0, 0.05, 0))
+	end
+	if n >= 5 then -- alas de neón arriba de la pantalla
+		for _, x in ipairs({ -1, 1 }) do
+			pieza({ Name = "Ala", Size = Vector3.new(0.4, 2.4, 0.4), Color = tenue, Material = Enum.Material.Neon }, CFrame.new(x * 3.4, 8.6, -7.25) * CFrame.Angles(0, 0, math.rad(-x * 30)))
 		end
 	end
-	-- nivel 4+: paneles de vidrio a los lados
-	if n >= 4 then
-		for _, x in ipairs({ -3.45, 3.45 }) do
-			pieza({ Name = "Panel", Size = Vector3.new(0.2, 2.2, 11), Color = nv.detalle, Material = Enum.Material.Glass, Transparency = 0.5 }, CFrame.new(x, 2, 0))
-		end
-	end
-	-- nivel 5+: arco al frente
-	-- nivel 7+: segundo arco atrás y plataforma brillante
-	local arcos = n >= 7 and { -6.8, 6.8 } or (n >= 5 and { -6.8 } or {})
-	for _, z in ipairs(arcos) do
-		for _, x in ipairs({ -3.9, 3.9 }) do
-			pieza({ Name = "PilarArco", Size = Vector3.new(0.8, 8, 0.8), Color = nv.detalle, Material = brillo }, CFrame.new(x, 4.4, z))
-		end
-		pieza({ Name = "VigaArco", Size = Vector3.new(8.6, 0.8, 0.8), Color = nv.detalle, Material = Enum.Material.Neon }, CFrame.new(0, 8.4, z))
-	end
-	if n >= 7 then
-		pieza({ Name = "Plataforma", Size = Vector3.new(9.5, 0.2, 15.5), Color = nv.detalle, Material = Enum.Material.Neon, Transparency = 0.3 }, CFrame.new(0, 0.1, 0))
-	end
-	-- nivel 6+: luz en la consola
-	if n >= 6 then
+	if n >= 6 then -- la pantalla ilumina alrededor
 		local luz = Instance.new("PointLight")
-		luz.Color = nv.detalle
+		luz.Color = acento
 		luz.Range = 16
 		luz.Brightness = 2
-		luz.Parent = consola
+		luz.Parent = pantalla
 	end
-	-- nivel 8: corona dorada con fuego
-	if n >= 8 then
-		local corona = pieza({ Name = "Corona", Shape = Enum.PartType.Ball, Size = Vector3.new(1.8, 1.8, 1.8), Color = Color3.fromRGB(255, 215, 0), Material = Enum.Material.Neon }, CFrame.new(0, 9.6, -6.8))
-		local chispas = Instance.new("Sparkles")
-		chispas.SparkleColor = Color3.fromRGB(255, 215, 0)
-		chispas.Parent = corona
+	if n >= 7 then -- halo alrededor del marco
+		pieza({ Name = "Halo", Size = Vector3.new(7, 8.2, 0.3), Color = tenue, Material = Enum.Material.Neon, Transparency = 0.6, CanCollide = false }, CFrame.new(0, 4.6, -7.6))
+	end
+	if n >= 8 then -- corona dorada con fuego
+		local corona = pieza({ Name = "Corona", Shape = Enum.PartType.Ball, Size = Vector3.new(1.8, 1.8, 1.8), Color = Color3.fromRGB(255, 215, 0), Material = Enum.Material.Neon }, CFrame.new(0, 9.4, -7.25))
 		local fuego = Instance.new("Fire")
 		fuego.Size = 3
 		fuego.Color = Color3.fromRGB(255, 200, 50)
@@ -834,12 +910,24 @@ local function aplicarCaminadora(base)
 		fuego.Parent = corona
 	end
 
+	-- texto escrito en la pantalla (lo ve el corredor y quien viene de la granja)
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = Enum.NormalId.Back
+	sg.CanvasSize = Vector2.new(260, 320)
+	sg.Parent = pantalla
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.fromScale(1, 1)
+	lbl.BackgroundTransparency = 1
+	lbl.Font = Enum.Font.FredokaOne
+	lbl.TextScaled = true
+	lbl.TextColor3 = Color3.fromRGB(20, 25, 40) -- letras oscuras sobre la pantalla clara
+	lbl.TextStrokeTransparency = 1
+	lbl.Text = "🏃"
+	lbl.Parent = sg
+
 	base.consola = consola
 	consola:SetAttribute("DuenoId", duenoId)
-	base.textoCaminadora = crearCartel(consola, "🏃 Caminadora", 80, n >= 5 and 6 or 3.2, 280)
-	if n >= 3 then
-		base.textoCaminadora.TextColor3 = nv.detalle
-	end
+	base.textoCaminadora = lbl
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "PromptCorrer"
 	prompt.ActionText = "Correr"
@@ -847,10 +935,16 @@ local function aplicarCaminadora(base)
 	prompt.HoldDuration = 0.3
 	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
+	-- E en la consola: subirse o bajarse (funciona aunque falle el script del cliente)
 	prompt.Triggered:Connect(function(plr)
-		entrarCaminadora(plr, base)
+		if enCaminadora[plr] == base then
+			salirCaminadora(plr)
+		else
+			entrarCaminadora(plr, base)
+		end
 	end)
 	prompt.Parent = consola
+	base.promptCorrer = prompt
 end
 
 ------------------------------------------------------------------
@@ -997,6 +1091,12 @@ local COLOR_CERRAR = Color3.fromRGB(165, 65, 55)
 local COLOR_PROTEGIDA = Color3.fromRGB(60, 115, 185)
 local COLOR_ESPERA = Color3.fromRGB(120, 115, 105)
 
+local function ponerNombre(base, texto)
+	for _, lbl in ipairs(base.carteles) do
+		lbl.Text = texto
+	end
+end
+
 local function estiloCierre(base, color, icono)
 	base.circuloBloqueo.BackgroundColor3 = color
 	base.iconoBloqueo.Text = icono
@@ -1021,7 +1121,7 @@ local function construirGranja(i, pos)
 		fondos = {},
 		ampliacion = 0,
 		fondo = MEDIO,
-		tcf = cf * CFrame.new(32, 0, -6), -- caminadora al costado de la granja
+		tcf = cf * CFrame.new(16, 0, -36), -- caminadora al frente de la granja, al lado del camino
 		nidos = CONFIG.NIDOS_INICIALES,
 		pendiente = 0,
 		bloqueadoHasta = 0,
@@ -1064,7 +1164,31 @@ local function construirGranja(i, pos)
 	end
 	crearParte({ Name = "VigaArco", Size = Vector3.new(16, 1.4, 1.8), CFrame = cf * CFrame.new(0, 12, -MEDIO), Color = MADERA_OSCURA, Material = Enum.Material.Wood, Parent = modelo })
 	local letrero = crearParte({ Name = "Letrero", Size = Vector3.new(12, 3, 0.4), CFrame = cf * CFrame.new(0, 9.6, -MEDIO - 0.3), Color = color, Material = Enum.Material.WoodPlanks, Parent = modelo })
-	base.cartel = crearCartel(letrero, "Granja libre", 60, 0, 280)
+	-- el nombre queda escrito en el letrero (por fuera y por dentro), no flotando
+	base.carteles = {}
+	for _, cara in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
+		local sg = Instance.new("SurfaceGui")
+		sg.Face = cara
+		sg.CanvasSize = Vector2.new(400, 100)
+		sg.LightInfluence = 1
+		sg.Parent = letrero
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.fromScale(1, 1)
+		lbl.BackgroundTransparency = 1
+		lbl.Font = Enum.Font.FredokaOne
+		lbl.TextScaled = true
+		lbl.TextColor3 = Color3.fromRGB(255, 250, 235)
+		lbl.TextStrokeTransparency = 0.4
+		lbl.Text = "Granja libre"
+		lbl.Parent = sg
+		local margen = Instance.new("UIPadding")
+		margen.PaddingLeft = UDim.new(0.05, 0)
+		margen.PaddingRight = UDim.new(0.05, 0)
+		margen.PaddingTop = UDim.new(0.12, 0)
+		margen.PaddingBottom = UDim.new(0.12, 0)
+		margen.Parent = lbl
+		table.insert(base.carteles, lbl)
+	end
 
 	base.barrera = crearParte({
 		Name = "Barrera",
@@ -1116,7 +1240,7 @@ local function construirGranja(i, pos)
 			local cantidad = math.floor(base.pendiente)
 			darDinero(plr, cantidad)
 			base.pendiente -= cantidad
-			notificar(plr, "+$" .. formato(cantidad))
+			notificar(plr, "+$" .. formato(cantidad), "Recoger")
 		end
 	end)
 
@@ -1173,8 +1297,12 @@ local function soltarHuevo(plr, entregar)
 		else
 			darDinero(plr, precioDe(c.info))
 		end
-		notificar(plr, "🦹 ¡Robaste " .. nombreDe(c.info) .. "!")
+		notificar(plr, "🦹 ¡Robaste " .. nombreDe(c.info) .. "!", "Robo")
 		progresoMision(plr, "robar", 1)
+		darInsignia(plr, "PrimerRobo")
+		if c.info.r == #RAREZAS then
+			darInsignia(plr, "HuevoDorado")
+		end
 		if c.dueno and c.dueno.Parent and basesDe[c.dueno] == c.base then
 			-- escudo automático para que no te roben varias veces seguidas
 			c.base.bloqueadoHasta = math.max(c.base.bloqueadoHasta, os.clock() + CONFIG.ESCUDO_ROBO)
@@ -1194,6 +1322,10 @@ function intentarRobar(plr, base, idx, h)
 		return
 	end
 	if enCaminadora[plr] then
+		return
+	end
+	if sonAliados(plr, base.dueno) then
+		notificar(plr, "No puedes robarle a tu aliado 🤝")
 		return
 	end
 	if cargando[plr] then
@@ -1231,7 +1363,10 @@ function intentarRobar(plr, base, idx, h)
 	cargando[plr] = { huevo = huevo, info = info, base = base, ranura = idx, dueno = base.dueno, salio = false }
 	aplicarVelocidad(plr)
 	notificar(plr, "¡Corre a tu granja!")
-	notificar(base.dueno, "⚠️ ¡" .. plr.DisplayName .. " te está robando " .. nombreDe(info) .. "!")
+	notificar(base.dueno, "⚠️ ¡" .. plr.DisplayName .. " te está robando " .. nombreDe(info) .. "!", "Alarma")
+	if aliados[base.dueno] then
+		notificar(aliados[base.dueno], "⚠️ ¡" .. plr.DisplayName .. " le está robando a tu aliado!", "Alarma")
+	end
 end
 
 local function descarga(plr)
@@ -1331,7 +1466,14 @@ function golpearZorro(plr, dano)
 			if p.Parent then
 				local premio = math.max(500, (p:GetAttribute("IngresoSeg") or 0) * 60)
 				darDinero(p, premio)
-				notificar(p, "🦊 ¡Ahuyentaste al zorro! +$" .. formato(premio))
+				notificar(p, "🦊 ¡Ahuyentaste al zorro! +$" .. formato(premio), "Mision")
+				local ep = estado[p]
+				if ep then
+					ep.zorros += 1
+					if ep.zorros >= 10 then
+						darInsignia(p, "Cazazorros")
+					end
+				end
 			end
 		end
 		notificarTodos("🦊 ¡El zorro huyó al bosque!")
@@ -1367,7 +1509,7 @@ local function lanzarZorro()
 	z.raiz, z.cartel = crearZorro(Vector3.new(inicio.X, Y_ZORRO, inicio.Z))
 	z.cartel.Text = "🦊 " .. string.rep("❤️", z.vida)
 	zorro = z
-	notificarTodos("🦊 ¡Un zorro va hacia la granja de " .. base.dueno.DisplayName .. "! Golpéalo con el bate")
+	notificarTodos("🦊 ¡Un zorro va hacia la granja de " .. base.dueno.DisplayName .. "! Golpéalo con el bate", "Zorro")
 
 	task.spawn(function()
 		local function huir()
@@ -1427,9 +1569,11 @@ local function golpear(atacante, victima, direccion, fuerza)
 	end
 	if cargando[victima] then
 		soltarHuevo(victima, false)
-		notificar(atacante, "¡Detuviste al ladrón!")
+		notificar(atacante, "¡Detuviste al ladrón!", "Mision")
 		progresoMision(atacante, "atrapar", 1)
 	end
+	notificar(atacante, nil, "Golpe")
+	notificar(victima, nil, "Golpe")
 	hum.Sit = true
 	local empuje = Instance.new("BodyVelocity")
 	empuje.MaxForce = Vector3.new(1e5, 1e5, 1e5)
@@ -1522,35 +1666,104 @@ eventoSalirCaminadora.Name = "SalirCaminadora"
 eventoSalirCaminadora.Parent = ReplicatedStorage
 
 local function centroCaminadora(base)
-	return base.tcf * CFrame.new(0, 4.2, 0)
+	return base.tcf * CFrame.new(0, 4.1, 0)
 end
 
+local ultimaBajada = {} -- [jugador] = os.clock() de cuando se bajó (para no volver a subirlo al instante)
+local pistasCorrer = {} -- [jugador] = animación de correr (la reproduce el servidor)
+
+-- animaciones de correr de Roblox, por si el personaje no trae la suya
+local CORRER_R15 = "rbxassetid://913376220"
+local CORRER_R6 = "rbxassetid://180426354"
+
+-- El servidor reproduce la animación de correr: así se ve igual para todos
+-- y no depende del script del cliente.
+local function animarCorrer(plr, char, hum)
+	local animator = hum:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = hum
+	end
+	local animate = char:FindFirstChild("Animate")
+	local run = animate and animate:FindFirstChild("run")
+	local propia = run and run:FindFirstChildOfClass("Animation")
+	local anim = Instance.new("Animation")
+	if propia and propia.AnimationId ~= "" then
+		anim.AnimationId = propia.AnimationId
+	else
+		anim.AnimationId = hum.RigType == Enum.HumanoidRigType.R15 and CORRER_R15 or CORRER_R6
+	end
+	local ok, pista = pcall(function()
+		return animator:LoadAnimation(anim)
+	end)
+	if not ok or not pista then
+		warn("[RobaHuevos] No se pudo cargar la animación de correr:", pista)
+		return
+	end
+	pista.Priority = Enum.AnimationPriority.Action4 -- por encima de la animación de estar quieto
+	pista.Looped = true
+	pista:Play(0.2)
+	pista:AdjustSpeed(math.max(1, velocidadDe(plr) / 16) * 1.1)
+	pistasCorrer[plr] = pista
+end
+
+-- Se puede usar la caminadora propia o la de una granja libre.
+-- El jugador queda anclado en el centro de la banda mientras corre.
 function entrarCaminadora(plr, base)
-	if plr ~= base.dueno or cargando[plr] or enCaminadora[plr] then
+	if (base.dueno ~= nil and base.dueno ~= plr) or cargando[plr] or enCaminadora[plr] then
+		return
+	end
+	if os.clock() - (ultimaBajada[plr] or 0) < 1.5 then
 		return
 	end
 	local char = plr.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if not hum or hum.Health <= 0 then
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or not hrp or hum.Health <= 0 then
 		return
 	end
 	hum.Sit = false
 	enCaminadora[plr] = base
 	char:PivotTo(centroCaminadora(base))
+	hrp.Anchored = true
+	animarCorrer(plr, char, hum)
 	plr:SetAttribute("CentroCaminadora", centroCaminadora(base))
+	if base.promptCorrer then
+		base.promptCorrer.ActionText = "Bajarse"
+	end
+	notificar(plr, "🏃 ¡A correr! Para bajarte: Espacio, el botón rojo o E en la consola")
 end
 
-local function salirCaminadora(plr, sinMover)
+function salirCaminadora(plr, sinMover)
 	local base = enCaminadora[plr]
 	if not base then
 		return
 	end
 	enCaminadora[plr] = nil
+	ultimaBajada[plr] = os.clock()
 	plr:SetAttribute("CentroCaminadora", nil)
-	local char = plr.Character
-	if char and not sinMover then
-		char:PivotTo(base.tcf * CFrame.new(5.5, 4, 0))
+	if base.promptCorrer then
+		base.promptCorrer.ActionText = "Correr"
 	end
+	local pista = pistasCorrer[plr]
+	if pista then
+		pista:Stop(0.2)
+		pistasCorrer[plr] = nil
+	end
+	local char = plr.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		hrp.Anchored = false
+	end
+	if char and not sinMover then
+		char:PivotTo(base.tcf * CFrame.new(-5.5, 4, 0))
+	end
+end
+
+-- ¿el jugador está parado encima de la banda?
+local function sobreLaBanda(base, pos)
+	local p = base.tcf:PointToObjectSpace(pos)
+	return math.abs(p.X) < 2.6 and math.abs(p.Z) < 6 and p.Y > 0 and p.Y < 7
 end
 
 eventoSalirCaminadora.OnServerEvent:Connect(function(plr)
@@ -1680,6 +1893,48 @@ function comprarItem(plr, item)
 		end
 		d.Value -= precio
 		ampliarGranja(plr)
+	elseif item == "Misterioso" then
+		local base = basesDe[plr]
+		local idx = base and ranuraLibre(base)
+		if not idx then
+			notificar(plr, "No tienes nidos libres para el huevo misterioso.")
+			return
+		end
+		if d.Value < CONFIG.PRECIO_MISTERIOSO then
+			notificar(plr, "Necesitas $" .. formato(CONFIG.PRECIO_MISTERIOSO))
+			return
+		end
+		d.Value -= CONFIG.PRECIO_MISTERIOSO
+		-- sortear rareza con los pesos del huevo misterioso
+		local total = 0
+		for _, p in ipairs(CONFIG.PESOS_MISTERIOSO) do
+			total += p
+		end
+		local x, ri = math.random() * total, 1
+		for i, p in ipairs(CONFIG.PESOS_MISTERIOSO) do
+			x -= p
+			if x <= 0 then
+				ri = i
+				break
+			end
+		end
+		local mutacion = 0
+		if math.random() < MUTACIONES[2].prob then
+			mutacion = 2
+		elseif math.random() < MUTACIONES[1].prob then
+			mutacion = 1
+		end
+		local info = { r = ri, g = false, m = mutacion }
+		colocarHuevo(base, idx, info)
+		eventoRevelar:FireClient(plr, ri, nombreDe(info))
+		if ri >= 5 then
+			task.delay(2.5, function()
+				notificarTodos("🎁 ¡" .. plr.DisplayName .. " sacó " .. nombreDe(info) .. " del huevo misterioso!")
+			end)
+		end
+		if ri == #RAREZAS then
+			darInsignia(plr, "HuevoDorado")
+		end
 	elseif CONFIG.ESCUDOS[item] then
 		local escudo = CONFIG.ESCUDOS[item]
 		if d.Value < escudo.precio then
@@ -1743,17 +1998,17 @@ crearParte({ Name = "Plaza", Size = Vector3.new(60, 0.4, 120), Position = Vector
 -- edificio de la tienda
 do
 	local crema = Color3.fromRGB(245, 235, 210)
-	crearParte({ Name = "MuroTienda", Size = Vector3.new(1, 14, 40), Position = Vector3.new(PX + 24, SUELO_Y + 7, C.Z), Color = crema, Material = Enum.Material.WoodPlanks })
-	for _, z in ipairs({ -20, 20 }) do
+	crearParte({ Name = "MuroTienda", Size = Vector3.new(1, 14, 56), Position = Vector3.new(PX + 24, SUELO_Y + 7, C.Z), Color = crema, Material = Enum.Material.WoodPlanks })
+	for _, z in ipairs({ -28, 28 }) do
 		crearParte({ Name = "MuroTienda", Size = Vector3.new(16, 14, 1), Position = Vector3.new(PX + 16.5, SUELO_Y + 7, C.Z + z), Color = crema, Material = Enum.Material.WoodPlanks })
 	end
-	crearParte({ Name = "TechoTienda", Size = Vector3.new(18, 1, 42), Position = Vector3.new(PX + 16, SUELO_Y + 14.5, C.Z), Color = Color3.fromRGB(150, 45, 40), Material = Enum.Material.WoodPlanks })
-	crearParte({ Name = "Mostrador", Size = Vector3.new(3, 3.5, 30), Position = Vector3.new(PX + 12, SUELO_Y + 1.75, C.Z), Color = MADERA, Material = Enum.Material.Wood })
-	for k = 0, 7 do
+	crearParte({ Name = "TechoTienda", Size = Vector3.new(18, 1, 58), Position = Vector3.new(PX + 16, SUELO_Y + 14.5, C.Z), Color = Color3.fromRGB(150, 45, 40), Material = Enum.Material.WoodPlanks })
+	crearParte({ Name = "Mostrador", Size = Vector3.new(3, 3.5, 44), Position = Vector3.new(PX + 12, SUELO_Y + 1.75, C.Z), Color = MADERA, Material = Enum.Material.Wood })
+	for k = 0, 10 do
 		crearParte({
 			Name = "Toldo",
 			Size = Vector3.new(6, 0.4, 5),
-			CFrame = CFrame.new(PX + 6, SUELO_Y + 12.5, C.Z - 17.5 + k * 5) * CFrame.Angles(0, 0, math.rad(20)),
+			CFrame = CFrame.new(PX + 6, SUELO_Y + 12.5, C.Z - 25 + k * 5) * CFrame.Angles(0, 0, math.rad(20)),
 			Color = (k % 2 == 0) and Color3.fromRGB(220, 50, 50) or Color3.new(1, 1, 1),
 			Material = Enum.Material.Fabric,
 		})
@@ -1768,7 +2023,25 @@ local function puesto(item, x, z, titulo, descripcion, color, forma, conRobux, t
 	local icono = crearParte({ Name = "Icono", Shape = forma or Enum.PartType.Block, Size = Vector3.new(2.2, 2.2, 2.2), CFrame = CFrame.new(pos + Vector3.new(0, 5, 0)), Color = color, Material = Enum.Material.Neon, CanCollide = false })
 	icono:SetAttribute("Item", item)
 	CollectionService:AddTag(icono, "Girar")
-	crearCartel(icono, titulo .. "\n" .. descripcion, 70, 3.8, 240)
+	-- cartel medido en studs: se achica con la distancia y no se encima con los puestos vecinos
+	local cartel = Instance.new("BillboardGui")
+	cartel.Size = UDim2.fromScale(7, 2.6)
+	cartel.StudsOffset = Vector3.new(0, 3.3, 0)
+	cartel.MaxDistance = 60
+	cartel.Adornee = icono
+	cartel.Parent = icono
+	for k, texto in ipairs({ titulo, descripcion }) do
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = k == 1 and UDim2.fromScale(1, 0.58) or UDim2.fromScale(1, 0.38)
+		lbl.Position = k == 1 and UDim2.fromScale(0, 0) or UDim2.fromScale(0, 0.62)
+		lbl.BackgroundTransparency = 1
+		lbl.Font = Enum.Font.FredokaOne
+		lbl.TextScaled = true
+		lbl.TextColor3 = k == 1 and Color3.new(1, 1, 1) or Color3.fromRGB(255, 235, 170)
+		lbl.TextStrokeTransparency = 0.2
+		lbl.Text = texto
+		lbl.Parent = cartel
+	end
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "PromptTienda"
 	prompt.ActionText = textoDinero or "Comprar"
@@ -1796,26 +2069,43 @@ local function puesto(item, x, z, titulo, descripcion, color, forma, conRobux, t
 		end)
 		pRobux.Parent = icono
 	end
+	return icono
 end
 
--- fila de adelante: mejoras y Game Passes
-puesto("Cierre", -4, -16, "🔒 Cierre largo", "Tu granja se cierra más tiempo", Color3.fromRGB(170, 170, 180))
-puesto("Cerca", -4, -8, "⚡ Cerca eléctrica", "Electrocuta a los ladrones", ELECTRICO)
-puesto("Dinero2x", -4, 0, "💰 x2 Dinero (Robux)", "Ganas el doble para siempre", Color3.fromRGB(80, 230, 100), Enum.PartType.Ball)
-puesto("BateDorado", -4, 8, "🏏 Bate dorado (Robux)", "Más alcance y fuerza", Color3.fromRGB(255, 205, 40), Enum.PartType.Cylinder)
-puesto("CaminadoraVIP", -4, 16, "🏃 Caminadora VIP (Robux)", "Pasos x2", Color3.fromRGB(170, 90, 255))
+-- La tienda es un cuadro (vista desde arriba):
+--   fila pegada al edificio, una columna a cada lado y el huevo de renacer en el centro.
+local FILA = 4 -- x de la fila pegada al edificio
+local COLUMNA = { -6, -16, -26 } -- x de los puestos de cada columna
+local LADO = 20 -- z de las columnas (izquierda = -LADO, derecha = +LADO)
+local COLOR_ESCUDO = Color3.fromRGB(120, 200, 255)
 
--- fila de atrás: ampliación y escudos (dinero del juego con E o Robux con F)
-puesto("Ampliar", -14, -16, "🏗️ Ampliar granja", "+6 nidos detrás del granero", Color3.fromRGB(205, 150, 90), nil, true)
-for i, item in ipairs({ "Escudo10m", "Escudo30m", "Escudo1d", "Escudo2d" }) do
+local function puestoEscudo(item, x, z)
 	local escudo = CONFIG.ESCUDOS[item]
-	puesto(item, -14, -16 + i * 8, "🛡️ Escudo " .. escudo.nombre, "Nadie puede entrar a tu granja", Color3.fromRGB(120, 200, 255), Enum.PartType.Ball, true, "Comprar $" .. formato(escudo.precio))
+	puesto(item, x, z, "🛡️ Escudo " .. escudo.nombre, "E: dinero  •  F: Robux", COLOR_ESCUDO, Enum.PartType.Ball, true, "Comprar $" .. formato(escudo.precio))
 end
 
--- huevo dorado gigante para renacer
+-- fila pegada al edificio
+puesto("Dinero2x", FILA, -20, "💰 x2 Dinero", "Game Pass (Robux)", Color3.fromRGB(80, 230, 100), Enum.PartType.Ball)
+puesto("BateDorado", FILA, -10, "🏏 Bate dorado", "Game Pass (Robux)", Color3.fromRGB(255, 205, 40), Enum.PartType.Cylinder)
+local iconoMisterioso = puesto("Misterioso", FILA, 0, "🎁 Huevo misterioso", "¡Puede salir un Dorado!", Color3.fromRGB(200, 120, 255), Enum.PartType.Ball, false, "Abrir $" .. formato(CONFIG.PRECIO_MISTERIOSO))
+CollectionService:AddTag(iconoMisterioso, "Arcoiris")
+puesto("CaminadoraVIP", FILA, 10, "🏃 Caminadora VIP", "Game Pass (Robux)", Color3.fromRGB(170, 90, 255))
+puesto("Ampliar", FILA, 20, "🏗️ Ampliar granja", "E: dinero  •  F: Robux", Color3.fromRGB(205, 150, 90), nil, true)
+
+-- columna izquierda: defensa
+puesto("Cierre", COLUMNA[1], -LADO, "🔒 Cierre largo", "Cierra tu granja más tiempo", Color3.fromRGB(170, 170, 180))
+puesto("Cerca", COLUMNA[2], -LADO, "⚡ Cerca eléctrica", "Electrocuta ladrones", ELECTRICO)
+puestoEscudo("Escudo10m", COLUMNA[3], -LADO)
+
+-- columna derecha: escudos
+puestoEscudo("Escudo30m", COLUMNA[1], LADO)
+puestoEscudo("Escudo1d", COLUMNA[2], LADO)
+puestoEscudo("Escudo2d", COLUMNA[3], LADO)
+
+-- huevo dorado gigante para renacer (en el centro de la tienda)
 local promptRenacer
 do
-	local pos = Vector3.new(PX - 8, SUELO_Y, C.Z - 42)
+	local pos = Vector3.new(PX - 11, SUELO_Y, C.Z)
 	crearParte({ Name = "Plataforma", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 18, 18), CFrame = CFrame.new(pos + Vector3.new(0, 0.9, 0)) * VERTICAL, Color = Color3.fromRGB(235, 225, 200), Material = Enum.Material.Marble })
 	crearParte({ Name = "Anillo", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 14, 14), CFrame = CFrame.new(pos + Vector3.new(0, 1.5, 0)) * VERTICAL, Color = Color3.fromRGB(255, 215, 0), Material = Enum.Material.Neon })
 	local huevo = crearParte({ Name = "HuevoGigante", Size = Vector3.new(7, 10, 7), CFrame = CFrame.new(pos + Vector3.new(0, 6.5, 0)), Color = Color3.fromRGB(255, 205, 40), Material = Enum.Material.Foil })
@@ -1931,6 +2221,7 @@ promptRenacer.Triggered:Connect(function(plr)
 	aplicarNidos(base, CONFIG.NIDOS_INICIALES)
 	d.Value = CONFIG.DINERO_INICIAL
 	rv.Value += 1
+	darInsignia(plr, "PrimerRenacer")
 	plr:SetAttribute("CostoRenacer", costoRenacer(plr))
 	notificarTodos("♻️ " .. plr.DisplayName .. " renació (x" .. multiplicador(plr) .. " de ingresos)")
 end)
@@ -2025,8 +2316,11 @@ local function generarHuevoCinta()
 		tween:Cancel()
 		h:Destroy()
 		colocarHuevo(miBase, idx, info)
-		notificar(plr, "¡Compraste " .. nombreDe(info) .. "!")
+		notificar(plr, "¡Compraste " .. nombreDe(info) .. "!", "Comprar")
 		progresoMision(plr, "comprar", 1)
+		if info.r == #RAREZAS then
+			darInsignia(plr, "HuevoDorado")
+		end
 	end)
 end
 
@@ -2065,12 +2359,15 @@ local function guardarDatos(plr)
 	local huevos = {}
 	local total = d.Value
 	local nidos = CONFIG.NIDOS_INICIALES
+	local ingreso = 0
 	if base then
 		for _, r in ipairs(base.ranuras) do
 			if r.info then
 				table.insert(huevos, { r = r.info.r, g = r.info.g, m = r.info.m })
+				ingreso += ingresoDe(r.info)
 			end
 		end
+		ingreso *= multiplicador(plr)
 		total += math.floor(base.pendiente)
 		nidos = base.nidos
 	end
@@ -2086,6 +2383,11 @@ local function guardarDatos(plr)
 			ampliacion = e.ampliacion,
 			escudoHasta = e.escudoHasta,
 			misiones = e.misiones,
+			ingresoSeg = ingreso, -- para las ganancias offline
+			ultimaConexion = os.time(),
+			racha = e.racha,
+			ultimoDiaRacha = e.ultimoDiaRacha,
+			zorros = e.zorros,
 		})
 	end)
 	if not ok then
@@ -2095,6 +2397,62 @@ local function guardarDatos(plr)
 		pcall(function()
 			ricos:SetAsync(tostring(plr.UserId), math.floor(total))
 		end)
+	end
+end
+
+------------------------------------------------------------------
+-- ALIADOS (equipos de 2)
+--   Pulsa G sobre otro jugador para invitarlo; si él pulsa G sobre ti, son aliados.
+--   Los aliados no se pueden robar, entran a la granja del otro aunque esté cerrada,
+--   pueden atrapar a quien le robe al otro y ganan +10 % de ingresos.
+------------------------------------------------------------------
+local function actualizarAliado(plr)
+	local a = aliados[plr]
+	plr:SetAttribute("AliadoId", a and a.UserId or 0)
+	plr:SetAttribute("AliadoNombre", a and a.DisplayName or "")
+end
+
+local function romperAlianza(plr, aviso)
+	local a = aliados[plr]
+	if not a then
+		return
+	end
+	aliados[plr] = nil
+	aliados[a] = nil
+	actualizarAliado(plr)
+	if a.Parent then
+		actualizarAliado(a)
+		notificar(a, "🤝 " .. plr.DisplayName .. " " .. aviso)
+	end
+end
+
+local function manejarAlianza(quien, objetivo)
+	if quien == objetivo then
+		return
+	end
+	if aliados[quien] == objetivo then
+		romperAlianza(quien, "terminó la alianza contigo")
+		notificar(quien, "Terminaste la alianza con " .. objetivo.DisplayName)
+		return
+	end
+	if aliados[quien] or aliados[objetivo] then
+		notificar(quien, "Cada jugador puede tener solo un aliado.")
+		return
+	end
+	if invitaciones[objetivo] == quien then
+		-- el otro ya me había invitado: se forma la alianza
+		invitaciones[objetivo] = nil
+		invitaciones[quien] = nil
+		aliados[quien] = objetivo
+		aliados[objetivo] = quien
+		actualizarAliado(quien)
+		actualizarAliado(objetivo)
+		notificar(quien, "🤝 ¡Ahora eres aliado de " .. objetivo.DisplayName .. "! +10 % de ingresos", "Mision")
+		notificar(objetivo, "🤝 ¡Ahora eres aliado de " .. quien.DisplayName .. "! +10 % de ingresos", "Mision")
+	else
+		invitaciones[quien] = objetivo
+		notificar(quien, "Invitaste a " .. objetivo.DisplayName .. ". Debe pulsar G sobre tu personaje para aceptar.")
+		notificar(objetivo, "🤝 " .. quien.DisplayName .. " quiere ser tu aliado. Pulsa G sobre su personaje para aceptar.")
 	end
 end
 
@@ -2134,6 +2492,22 @@ local function alAparecer(plr, char)
 		return
 	end
 	aplicarVelocidad(plr)
+
+	-- botón para formar alianza (tecla G); el cliente lo oculta en tu propio personaje
+	local pAliado = Instance.new("ProximityPrompt")
+	pAliado.Name = "PromptAliado"
+	pAliado.ActionText = "Alianza 🤝"
+	pAliado.ObjectText = plr.DisplayName
+	pAliado.KeyboardKeyCode = Enum.KeyCode.G
+	pAliado.HoldDuration = 0.8
+	pAliado.MaxActivationDistance = 8
+	pAliado.RequiresLineOfSight = false
+	pAliado:SetAttribute("JugadorId", plr.UserId)
+	pAliado.Triggered:Connect(function(otro)
+		manejarAlianza(otro, plr)
+	end)
+	pAliado.Parent = hrp
+
 	hum.Died:Connect(function()
 		soltarHuevo(plr, false)
 		salirCaminadora(plr, true)
@@ -2144,6 +2518,51 @@ local function alAparecer(plr, char)
 		char:PivotTo(base.spawn)
 	end
 	darBate(plr)
+end
+
+-- Racha diaria: se revisa al entrar y cuando cambia el día
+local function revisarRacha(plr)
+	local e = estado[plr]
+	if not e then
+		return
+	end
+	local hoy = diaActual()
+	if e.ultimoDiaRacha == hoy then
+		plr:SetAttribute("Racha", e.racha)
+		return
+	end
+	e.racha = (e.ultimoDiaRacha == hoy - 1) and e.racha + 1 or 1
+	e.ultimoDiaRacha = hoy
+	plr:SetAttribute("Racha", e.racha)
+
+	local base = basesDe[plr]
+	local dia = (e.racha - 1) % 7 + 1
+	if dia == 7 then
+		local info = { r = 6, g = false, m = 0 } -- huevo Mítico
+		local idx = base and ranuraLibre(base)
+		if idx then
+			colocarHuevo(base, idx, info)
+		else
+			darDinero(plr, precioDe(info))
+		end
+		notificar(plr, "🔥 ¡Racha de " .. e.racha .. " días! Premio: " .. nombreDe(info), "Mision")
+	else
+		local ingreso = 0
+		if base then
+			for _, r in ipairs(base.ranuras) do
+				if r.info then
+					ingreso += ingresoDe(r.info)
+				end
+			end
+		end
+		ingreso *= multiplicador(plr)
+		local premio = math.max(CONFIG.RACHA_MINIMO * dia, math.floor(ingreso * CONFIG.RACHA_SEGUNDOS[dia]))
+		darDinero(plr, premio)
+		notificar(plr, "🔥 Racha de " .. e.racha .. " día(s): +$" .. formato(premio) .. "  (día 7: huevo Mítico)", "Mision")
+	end
+	if e.racha >= 7 then
+		darInsignia(plr, "Racha7")
+	end
 end
 
 local function alEntrar(plr)
@@ -2158,7 +2577,20 @@ local function alEntrar(plr)
 	rv.Parent = ls
 	ls.Parent = plr
 
-	local e = { pasos = 0, cierre = 1, cerca = 0, ampliacion = 0, escudoHasta = 0, pases = {}, misiones = nil, ultimoEnvio = 0 }
+	local e = {
+		pasos = 0,
+		cierre = 1,
+		cerca = 0,
+		ampliacion = 0,
+		escudoHasta = 0,
+		racha = 0,
+		ultimoDiaRacha = 0,
+		zorros = 0,
+		insignias = {},
+		pases = {},
+		misiones = nil,
+		ultimoEnvio = 0,
+	}
 	estado[plr] = e
 
 	local base
@@ -2174,7 +2606,7 @@ local function alEntrar(plr)
 		base.bloqueadoHasta = os.clock() + CONFIG.ESCUDO_ENTRADA
 		base.listoBloqueo = 0
 		basesDe[plr] = base
-		base.cartel.Text = "Granja de " .. plr.DisplayName
+		ponerNombre(base, "Granja de " .. plr.DisplayName)
 		aplicarNidos(base, CONFIG.NIDOS_INICIALES)
 	else
 		notificar(plr, "Todas las granjas están ocupadas.")
@@ -2200,6 +2632,20 @@ local function alEntrar(plr)
 		e.misiones = datos.misiones
 		e.ampliacion = math.clamp(datos.ampliacion or 0, 0, #CONFIG.PRECIOS_AMPLIACION)
 		e.escudoHasta = datos.escudoHasta or 0
+		e.racha = datos.racha or 0
+		e.ultimoDiaRacha = datos.ultimoDiaRacha or 0
+		e.zorros = datos.zorros or 0
+
+		-- ganancias offline: un porcentaje de lo que ganabas, por el tiempo que no estuviste
+		local fuera = math.min(os.time() - (datos.ultimaConexion or os.time()), CONFIG.OFFLINE_MAX_HORAS * 3600)
+		local ganancia = math.floor((datos.ingresoSeg or 0) * fuera * CONFIG.OFFLINE_PORCENTAJE)
+		if fuera > 60 and ganancia > 0 then
+			d.Value += ganancia
+			task.delay(3, function()
+				notificar(plr, "💤 Mientras no estabas (" .. formatoDuracion(fuera) .. ") tu granja ganó $" .. formato(ganancia), "Recoger")
+			end)
+		end
+
 		if base then
 			aplicarAmpliacion(base, e.ampliacion)
 			aplicarNidos(base, math.clamp(datos.nidos or CONFIG.NIDOS_INICIALES, CONFIG.NIDOS_INICIALES, maxNidos(base)))
@@ -2219,6 +2665,8 @@ local function alEntrar(plr)
 	end
 	revisarDia(plr)
 	enviarMisiones(plr)
+	revisarRacha(plr)
+	actualizarAliado(plr)
 	actualizarAtributosTienda(plr)
 	plr:SetAttribute("CostoRenacer", costoRenacer(plr))
 	if plr.Character and not e.conPersonaje then
@@ -2237,6 +2685,13 @@ for _, plr in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerRemoving:Connect(function(plr)
+	romperAlianza(plr, "salió del juego")
+	invitaciones[plr] = nil
+	for quien, invitado in pairs(invitaciones) do
+		if invitado == plr then
+			invitaciones[quien] = nil
+		end
+	end
 	soltarHuevo(plr, false)
 	guardarDatos(plr)
 	local base = basesDe[plr]
@@ -2247,7 +2702,7 @@ Players.PlayerRemoving:Connect(function(plr)
 		base.pendiente = 0
 		base.bloqueadoHasta = 0
 		base.listoBloqueo = 0
-		base.cartel.Text = "Granja libre"
+		ponerNombre(base, "Granja libre")
 		base.nidos = CONFIG.NIDOS_INICIALES
 		aplicarAmpliacion(base, 0)
 		aplicarCerca(base)
@@ -2257,6 +2712,8 @@ Players.PlayerRemoving:Connect(function(plr)
 		zorro.golpeadores[plr] = nil
 	end
 	enCaminadora[plr] = nil
+	ultimaBajada[plr] = nil
+	pistasCorrer[plr] = nil
 	datosCargados[plr] = nil
 	estado[plr] = nil
 end)
@@ -2284,7 +2741,7 @@ task.spawn(function()
 		task.wait(CONFIG.HORA_DORADA_CADA)
 		horaDorada = true
 		ReplicatedStorage:SetAttribute("HoraDoradaFin", workspace:GetServerTimeNow() + CONFIG.HORA_DORADA_DURACION)
-		notificarTodos("🌟 ¡HORA DORADA! Más huevos raros y mutaciones durante " .. CONFIG.HORA_DORADA_DURACION .. " s 🌟")
+		notificarTodos("🌟 ¡HORA DORADA! Más huevos raros y mutaciones durante " .. CONFIG.HORA_DORADA_DURACION .. " s 🌟", "Nivel")
 		task.wait(CONFIG.HORA_DORADA_DURACION)
 		horaDorada = false
 	end
@@ -2316,7 +2773,7 @@ task.spawn(function()
 								r.huevo:Destroy()
 								r.huevo = nil
 								colocarHuevo(base, i, nueva)
-								notificar(dueno, "🐣 ¡Eclosionó! Ahora tienes " .. nombreDe(nueva))
+								notificar(dueno, "🐣 ¡Eclosionó! Ahora tienes " .. nombreDe(nueva), "Eclosion")
 								progresoMision(dueno, "eclosionar", 1)
 							elseif r.lbl then
 								r.lbl.Text = nombreDe(r.info) .. "\n$" .. formato(ingresoDe(r.info)) .. "/s • 🐣 " .. formatoTiempo(r.eclosion - ahora)
@@ -2348,12 +2805,22 @@ task.spawn(function()
 				soltarHuevo(plr, false)
 			else
 				local miBase = basesDe[plr]
-				local hrpDueno = c.dueno and c.dueno.Character and c.dueno.Character:FindFirstChild("HumanoidRootPart")
+				-- el dueño o su aliado atrapan al ladrón si lo tocan
+				local defensor = nil
+				for _, p in ipairs({ c.dueno or false, c.dueno and aliados[c.dueno] or false }) do
+					local h2 = p and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+					if h2 and (h2.Position - hrp.Position).Magnitude < 5 then
+						defensor = p
+					end
+				end
 				if miBase and dentroDeBase(miBase, hrp.Position) then
 					soltarHuevo(plr, true)
-				elseif hrpDueno and (hrpDueno.Position - hrp.Position).Magnitude < 5 then
-					notificar(c.dueno, "¡Atrapaste al ladrón!")
-					progresoMision(c.dueno, "atrapar", 1)
+				elseif defensor then
+					notificar(defensor, "¡Atrapaste al ladrón!", "Golpe")
+					progresoMision(defensor, "atrapar", 1)
+					if defensor ~= c.dueno then
+						notificar(c.dueno, "🤝 Tu aliado " .. defensor.DisplayName .. " atrapó al ladrón")
+					end
 					soltarHuevo(plr, false)
 				elseif not c.salio and not dentroDeBase(c.base, hrp.Position) then
 					-- al salir de la granja: la cerca eléctrica puede detenerlo
@@ -2376,7 +2843,7 @@ task.spawn(function()
 				-- cierre: expulsa a los intrusos
 				if protegida(base) then
 					for _, p in ipairs(Players:GetPlayers()) do
-						local hrp = p ~= dueno and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+						local hrp = p ~= dueno and not sonAliados(p, dueno) and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
 						if hrp and dentroDeBase(base, hrp.Position) then
 							soltarHuevo(p, false)
 							p.Character:PivotTo(base.cf * CFrame.new(0, 5, -32))
@@ -2385,27 +2852,48 @@ task.spawn(function()
 					end
 				end
 
-				-- caminadora: cuenta pasos mientras el dueño corre en ella
-				local e = estado[dueno]
-				if e and enCaminadora[dueno] == base then
-					local char = dueno.Character
-					local hrp = char and char:FindFirstChild("HumanoidRootPart")
-					local hum = char and char:FindFirstChildOfClass("Humanoid")
-					local centro = base.tcf.Position
-					local lejos = not hrp or Vector3.new(hrp.Position.X - centro.X, 0, hrp.Position.Z - centro.Z).Magnitude > 4
-					if lejos or not hum or hum.Health <= 0 then
-						salirCaminadora(dueno, true)
-					else
-						local nivelAntes = nivelCaminadora(e.pasos)
-						local suma = tienePase(dueno, "CaminadoraVIP") and 2 or 1
-						e.pasos += suma
-						progresoMision(dueno, "pasos", suma)
-						local nivel = nivelCaminadora(e.pasos)
-						if nivel > nivelAntes then
-							aplicarVelocidad(dueno)
-							aplicarCaminadora(base)
-							notificarTodos("⚡ " .. dueno.DisplayName .. " subió su caminadora a nivel " .. nivel .. " (velocidad " .. CAMINADORA[nivel].vel .. ")")
+			end
+		end
+
+		-- caminadora: cada jugador usa la suya (o la de una granja libre)
+		for _, plr in ipairs(Players:GetPlayers()) do
+			local e = estado[plr]
+			local char = plr.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local enUso = enCaminadora[plr]
+			if not enUso then
+				-- arranca sola al subirse a la banda
+				if e and hrp and hum and hum.Health > 0 then
+					for _, b in ipairs(bases) do
+						if (b.dueno == plr or b.dueno == nil) and sobreLaBanda(b, hrp.Position) then
+							entrarCaminadora(plr, b)
+							break
 						end
+					end
+				end
+			elseif not e or not hrp or not hum or hum.Health <= 0 then
+				salirCaminadora(plr, true)
+			else
+				-- contar pasos
+				local nivelAntes = nivelCaminadora(e.pasos)
+				local suma = tienePase(plr, "CaminadoraVIP") and 2 or 1
+				e.pasos += suma
+				progresoMision(plr, "pasos", suma)
+				local nivel = nivelCaminadora(e.pasos)
+				if nivel > nivelAntes then
+					aplicarVelocidad(plr)
+					local miBase = basesDe[plr]
+					if miBase then
+						aplicarCaminadora(miBase)
+					end
+					local pista = pistasCorrer[plr]
+					if pista then
+						pista:AdjustSpeed(math.max(1, velocidadDe(plr) / 16) * 1.1)
+					end
+					notificarTodos("⚡ " .. plr.DisplayName .. " subió su caminadora a nivel " .. nivel .. " (velocidad " .. CAMINADORA[nivel].vel .. ")", "Nivel")
+					if nivel == #CAMINADORA then
+						darInsignia(plr, "CaminadoraMaxima")
 					end
 				end
 			end
@@ -2464,6 +2952,7 @@ task.spawn(function()
 		for _, plr in ipairs(Players:GetPlayers()) do
 			guardarDatos(plr)
 			revisarDia(plr)
+			revisarRacha(plr)
 		end
 		actualizarTabla()
 	end

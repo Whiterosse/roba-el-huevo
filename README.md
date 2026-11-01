@@ -32,7 +32,7 @@ Todo el mapa (granjas, cinta, gallinero, plaza, tienda) **se construye por códi
 | 🏗️ **Ampliar granja** | 2 ampliaciones de +6 nidos detrás del granero. Con dinero del juego o al instante con Robux. |
 | 🐣 **Eclosión** | Los huevos se convierten en gallinas con el tiempo y producen x2. |
 | 🔥🌈 **Mutaciones** | Huevos de Lava (x2) y Arcoíris (x3). |
-| 🏃 **Caminadora** | Al costado de cada granja. Pulsa E en la consola y corres fijo en el centro; los pasos suben tu velocidad (8 niveles, de 16 a 34). Cada nivel cambia el color y el diseño (luces, paneles, arcos, corona dorada). Bájate con Espacio o con el botón. |
+| 🏃 **Caminadora** | Al frente de cada granja, junto al camino. Súbete a la banda y arranca sola: corres en el centro con la animación de correr y una cámara de costado. Los pasos suben tu velocidad (8 niveles, de 16 a 34). Diseño tipo portal de neón que cambia de color y gana piezas en cada nivel. Bájate con Espacio o con el botón. |
 | 🦊 **Zorro** | Cada 6 min intenta robar un huevo. Golpéalo 3 veces para ahuyentarlo y ganar premio. |
 | 🌟 **Hora dorada** | Cada 5 min, durante 60 s, salen más huevos raros y mutaciones. |
 | 📋 **Misiones diarias** | 3 misiones al día con premio en dinero. |
@@ -42,6 +42,13 @@ Todo el mapa (granjas, cinta, gallinero, plaza, tienda) **se construye por códi
 | ♻️ **Renacer** | Reinicias tu progreso a cambio de +50 % de ingresos permanente. |
 | 🏆 **Tabla global** | Los 10 jugadores más ricos de todos los servidores. |
 | 💾 **Guardado** | El progreso se guarda automáticamente con DataStore. |
+| 💤 **Ganancias offline** | Al volver recibes el 25 % de lo que ganabas, por el tiempo que no estuviste (máximo 8 h). |
+| 🔥 **Racha diaria** | Premio por entrar días seguidos; el día 7 regala un huevo Mítico. |
+| 🎁 **Huevo misterioso** | Cuesta $8K y puede salir cualquier rareza, hasta un Dorado, con ruleta animada. |
+| 🔊 **Sonidos** | Efectos al comprar, robar, golpear, eclosionar y subir de nivel. Botón para silenciar. |
+| 🏅 **Insignias** | Primer robo, caminadora al máximo, 10 zorros, primer renacer, racha de 7 días y huevo Dorado. |
+| 🤝 **Aliados** | Pulsa **G** sobre otro jugador; si te responde con G, son aliados: no se roban, entran a la granja del otro, atrapan ladrones juntos y ganan +10 %. |
+| 🛒 **Tienda** | Al final de la cinta: puestos en cuadro alrededor del huevo de renacer. |
 
 ### Rarezas
 
@@ -114,6 +121,24 @@ PRODUCTOS = {
 
 > En Studio las compras con Robux son de prueba (no se cobra nada), así que puedes probarlas con los IDs reales.
 
+### Insignias (Badges)
+
+1. En create.roblox.com → tu experiencia → **Engagement → Insignias**, crea las que quieras.
+2. Copia cada ID en `CONFIG.INSIGNIAS` del script del servidor (`PrimerRobo`, `CaminadoraMaxima`, `Cazazorros`, `PrimerRenacer`, `Racha7`, `HuevoDorado`). Las que queden en `0` simplemente no se entregan.
+
+### Música
+
+Los efectos de sonido ya funcionan (usan sonidos que vienen con Roblox). Para poner música de fondo:
+1. En Studio abre la **Caja de herramientas → Audio**, elige una canción y pulsa **Insertar**.
+2. Aparece un objeto **Sound** en `Workspace`. Cámbiale el nombre a `Musica` y arrástralo a `ReplicatedStorage`.
+3. Listo: el juego la toca en bucle. El botón 🔊 la silencia.
+
+También puedes pegar el ID directamente en `MUSICA_ID` (sección *Sonidos y música* de `RobaHuevos_Cliente.lua`):
+
+```lua
+local MUSICA_ID = "rbxassetid://1234567890"
+```
+
 ---
 
 ## ⚙️ Configuración
@@ -134,6 +159,10 @@ Todo se ajusta en la tabla `CONFIG`, al principio de `RobaHuevos_Servidor.lua`:
 | `PROB_CERCA` / `PRECIOS_CERCA` | Mejora de cerca eléctrica |
 | `RENACER_BASE` / `BONO_RENACER` | Costo y bono de renacer |
 | `HORA_DORADA_CADA` / `HORA_DORADA_DURACION` | Evento de hora dorada |
+| `OFFLINE_PORCENTAJE` / `OFFLINE_MAX_HORAS` | Ganancias mientras no estás |
+| `RACHA_SEGUNDOS` / `RACHA_MINIMO` | Premios de la racha diaria |
+| `PRECIO_MISTERIOSO` / `PESOS_MISTERIOSO` | Precio y probabilidades del huevo misterioso |
+| `BONO_ALIADO` | Bono de ingresos por tener aliado |
 
 Las rarezas están en `RAREZAS`, las mutaciones en `MUTACIONES` y los niveles de la caminadora en `CAMINADORA`.
 
