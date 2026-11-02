@@ -1,5 +1,5 @@
 --[[
-	ROBA EL HUEVO  -  Script del SERVIDOR  (v4)
+	EGG HEIST 🥚 GRANJA LADRONA 🐔  -  Script del SERVIDOR  (v4)
 	Dónde va: ServerScriptService  (Insertar objeto > Script)
 	Construye todo el mapa automáticamente al iniciar el juego.
 
@@ -418,7 +418,7 @@ end
 -- CONSTRUCCIÓN: AYUDANTES
 ------------------------------------------------------------------
 local mapa = Instance.new("Folder")
-mapa.Name = "RobaHuevosMapa"
+mapa.Name = "EggHeistMapa"
 mapa.Parent = workspace
 
 local function crearParte(props, clase)
@@ -1659,7 +1659,7 @@ end
 ------------------------------------------------------------------
 -- CAMINADORA: el jugador corre fijo en el centro de la banda
 --   El servidor guarda quién está corriendo; el cliente lo mantiene en el centro
---   y lo hace correr en el lugar (ver RobaHuevos_Cliente).
+--   y lo hace correr en el lugar (ver EggHeist_Cliente).
 ------------------------------------------------------------------
 local eventoSalirCaminadora = Instance.new("RemoteEvent")
 eventoSalirCaminadora.Name = "SalirCaminadora"
@@ -1697,7 +1697,7 @@ local function animarCorrer(plr, char, hum)
 		return animator:LoadAnimation(anim)
 	end)
 	if not ok or not pista then
-		warn("[RobaHuevos] No se pudo cargar la animación de correr:", pista)
+		warn("[EggHeist] No se pudo cargar la animación de correr:", pista)
 		return
 	end
 	pista.Priority = Enum.AnimationPriority.Action4 -- por encima de la animación de estar quieto
@@ -2329,6 +2329,7 @@ end
 ------------------------------------------------------------------
 local almacen
 pcall(function()
+	-- nombre interno del guardado: NO cambiarlo o se pierde el progreso de los jugadores
 	almacen = DataStoreService:GetDataStore("RobaHuevos_v1")
 end)
 
@@ -2340,7 +2341,7 @@ local function cargarDatos(plr)
 		return almacen:GetAsync("p_" .. plr.UserId)
 	end)
 	if not ok then
-		warn("[RobaHuevos] No se pudieron cargar datos (¿API Services desactivado?):", datos)
+		warn("[EggHeist] No se pudieron cargar datos (¿API Services desactivado?):", datos)
 	end
 	return ok, datos
 end
@@ -2391,7 +2392,7 @@ local function guardarDatos(plr)
 		})
 	end)
 	if not ok then
-		warn("[RobaHuevos] Error al guardar:", err)
+		warn("[EggHeist] Error al guardar:", err)
 	end
 	if ricos then
 		pcall(function()

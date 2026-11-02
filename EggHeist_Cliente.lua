@@ -1,5 +1,5 @@
 --[[
-	ROBA EL HUEVO  -  Script del CLIENTE  (v4)
+	EGG HEIST 🥚 GRANJA LADRONA 🐔  -  Script del CLIENTE  (v4)
 	Dónde va: StarterPlayer > StarterPlayerScripts  (Insertar objeto > LocalScript)
 	Muestra dinero, ingresos, escudo, renacer, hora dorada, misiones y avisos.
 	Ajusta los botones de la tienda, anima los huevos arcoíris y la banda de la caminadora,
@@ -186,7 +186,7 @@ end)
 -- HUD
 ------------------------------------------------------------------
 local gui = Instance.new("ScreenGui")
-gui.Name = "RobaHuevosHUD"
+gui.Name = "EggHeistHUD"
 gui.ResetOnSpawn = false
 gui.Parent = jugador:WaitForChild("PlayerGui")
 
@@ -514,6 +514,7 @@ ReplicatedStorage:WaitForChild("Revelar").OnClientEvent:Connect(function(ri, nom
 	ventanaRevelar.Visible = false
 end)
 
+mostrarAviso("🐔 ¡Bienvenido a Egg Heist: Granja Ladrona! 🥚", 8)
 mostrarAviso("🥚 Compra huevos en la cinta con E", 8)
 mostrarAviso("🏃 Usa tu caminadora para ser más rápido", 8)
 mostrarAviso("🛒 La tienda está al final de la cinta", 8)

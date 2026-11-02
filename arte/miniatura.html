@@ -1,0 +1,213 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Egg Heist - miniatura</title>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+  svg { display: block; }
+  .titulo { font-family: 'Lilita One', 'Arial Black', Impact, sans-serif; }
+</style>
+</head>
+<body>
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cielo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f9ce8"/>
+      <stop offset="0.65" stop-color="#a9e2ff"/>
+    </linearGradient>
+    <radialGradient id="sol">
+      <stop offset="0" stop-color="#fffbe0"/>
+      <stop offset="0.4" stop-color="#fff2a8" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fff2a8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="pasto" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#86dd5c"/>
+      <stop offset="1" stop-color="#3f9a32"/>
+    </linearGradient>
+    <linearGradient id="rojo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e2493a"/>
+      <stop offset="1" stop-color="#a8281e"/>
+    </linearGradient>
+    <radialGradient id="oro" cx="0.36" cy="0.3" r="0.75">
+      <stop offset="0" stop-color="#fffbe0"/>
+      <stop offset="0.3" stop-color="#ffe066"/>
+      <stop offset="0.72" stop-color="#f4ab00"/>
+      <stop offset="1" stop-color="#b56a00"/>
+    </radialGradient>
+    <radialGradient id="aura">
+      <stop offset="0" stop-color="#fff6b0" stop-opacity="0.95"/>
+      <stop offset="0.45" stop-color="#ffd84a" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#ffd84a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="letras" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff6b8"/>
+      <stop offset="0.5" stop-color="#ffd23f"/>
+      <stop offset="1" stop-color="#f29a00"/>
+    </linearGradient>
+    <radialGradient id="vineta" cx="0.5" cy="0.5" r="0.75">
+      <stop offset="0.6" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.35"/>
+    </radialGradient>
+    <!-- destello de 4 puntas -->
+    <symbol id="chispa" viewBox="-40 -40 80 80" overflow="visible">
+      <path d="M0 -40 C 6 -6 6 -6 40 0 C 6 6 6 6 0 40 C -6 6 -6 6 -40 0 C -6 -6 -6 -6 0 -40Z" fill="#fffbe0"/>
+    </symbol>
+    <!-- nube -->
+    <symbol id="nube" viewBox="0 0 300 120" overflow="visible">
+      <g fill="#ffffff" opacity="0.95">
+        <ellipse cx="80" cy="80" rx="80" ry="45"/>
+        <ellipse cx="160" cy="55" rx="85" ry="55"/>
+        <ellipse cx="235" cy="82" rx="70" ry="40"/>
+      </g>
+    </symbol>
+  </defs>
+
+  <!-- cielo, sol y nubes -->
+  <rect width="1920" height="1080" fill="url(#cielo)"/>
+  <circle cx="1720" cy="150" r="300" fill="url(#sol)"/>
+  <circle cx="1720" cy="150" r="85" fill="#fff6c8"/>
+  <use href="#nube" x="120" y="300" width="300" height="120" transform="scale(1)"/>
+  <use href="#nube" x="1350" y="330" width="300" height="120"/>
+  <use href="#nube" x="980" y="40" width="300" height="120" opacity="0.8"/>
+
+  <!-- colinas y árboles al fondo -->
+  <path d="M0 650 Q 260 540 560 620 T 1160 610 T 1920 600 V1080 H0Z" fill="#5c9e45"/>
+  <g fill="#3f7f34">
+    <circle cx="1480" cy="575" r="48"/><circle cx="1530" cy="560" r="40"/>
+    <circle cx="1760" cy="570" r="52"/><circle cx="1820" cy="585" r="38"/>
+    <circle cx="660" cy="590" r="40"/>
+  </g>
+
+  <!-- suelo y camino -->
+  <path d="M0 735 Q 960 665 1920 735 V1080 H0Z" fill="url(#pasto)"/>
+  <path d="M820 1080 Q 930 860 1060 700 L1120 700 Q 1150 860 1260 1080Z" fill="#c4935f"/>
+
+  <!-- granero -->
+  <g>
+    <rect x="150" y="540" width="340" height="250" fill="url(#rojo)" stroke="#5a120c" stroke-width="8"/>
+    <polygon points="118,552 320,400 522,552" fill="#5b3f35" stroke="#2e1f1a" stroke-width="8" stroke-linejoin="round"/>
+    <polyline points="140,548 320,415 500,548" fill="none" stroke="#fff" stroke-width="10" stroke-linejoin="round"/>
+    <rect x="285" y="565" width="70" height="55" fill="#fff4e2" stroke="#fff" stroke-width="6"/>
+    <rect x="245" y="640" width="150" height="150" fill="#7a1f17" stroke="#fff" stroke-width="10"/>
+    <line x1="245" y1="640" x2="395" y2="790" stroke="#fff" stroke-width="10"/>
+    <line x1="395" y1="640" x2="245" y2="790" stroke="#fff" stroke-width="10"/>
+  </g>
+  <!-- silo -->
+  <g>
+    <rect x="505" y="470" width="100" height="320" fill="#cfd5dc" stroke="#6b7480" stroke-width="7"/>
+    <line x1="505" y1="560" x2="605" y2="560" stroke="#9aa3ad" stroke-width="6"/>
+    <line x1="505" y1="660" x2="605" y2="660" stroke="#9aa3ad" stroke-width="6"/>
+    <ellipse cx="555" cy="470" rx="54" ry="44" fill="#d64032" stroke="#5a120c" stroke-width="7"/>
+  </g>
+
+  <!-- cerca -->
+  <g fill="#9a6a3e" stroke="#5c3b1e" stroke-width="5">
+    <rect x="640" y="738" width="1280" height="16" rx="4"/>
+    <rect x="640" y="775" width="1280" height="16" rx="4"/>
+    <rect x="660" y="715" width="20" height="100" rx="4"/>
+    <rect x="1400" y="712" width="20" height="100" rx="4"/>
+    <rect x="1540" y="712" width="20" height="100" rx="4"/>
+    <rect x="1680" y="715" width="20" height="100" rx="4"/>
+    <rect x="1820" y="718" width="20" height="100" rx="4"/>
+  </g>
+
+  <!-- huevo dorado gigante con aura y destellos -->
+  <circle cx="1235" cy="500" r="420" fill="url(#aura)"/>
+  <ellipse cx="1235" cy="790" rx="250" ry="58" fill="#e2b955" stroke="#9c7426" stroke-width="7"/>
+  <g stroke="#b88a35" stroke-width="5" stroke-linecap="round">
+    <line x1="1020" y1="785" x2="1080" y2="770"/><line x1="1110" y1="800" x2="1170" y2="780"/>
+    <line x1="1290" y1="800" x2="1350" y2="782"/><line x1="1380" y1="790" x2="1440" y2="772"/>
+  </g>
+  <ellipse cx="1235" cy="510" rx="185" ry="245" fill="url(#oro)" stroke="#7a4300" stroke-width="10"/>
+  <ellipse cx="1170" cy="400" rx="42" ry="72" fill="#ffffff" opacity="0.55" transform="rotate(-20 1170 400)"/>
+  <use href="#chispa" x="1440" y="300" width="90" height="90"/>
+  <use href="#chispa" x="1000" y="250" width="60" height="60"/>
+  <use href="#chispa" x="1450" y="600" width="55" height="55"/>
+  <use href="#chispa" x="1060" y="640" width="40" height="40"/>
+
+  <!-- ladrón (bloques) corriendo hacia la izquierda con un huevo -->
+  <g transform="translate(0 45)">
+    <!-- líneas de velocidad -->
+    <g stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity="0.85">
+      <line x1="870" y1="560" x2="960" y2="560"/>
+      <line x1="880" y1="620" x2="990" y2="620"/>
+      <line x1="860" y1="680" x2="940" y2="680"/>
+    </g>
+    <!-- piernas -->
+    <rect x="712" y="760" width="62" height="160" rx="10" fill="#2a2f45" stroke="#14172a" stroke-width="7" transform="rotate(28 743 760)"/>
+    <rect x="770" y="760" width="62" height="160" rx="10" fill="#2a2f45" stroke="#14172a" stroke-width="7" transform="rotate(-22 801 760)"/>
+    <!-- torso con rayas de ladrón -->
+    <rect x="700" y="600" width="140" height="170" rx="12" fill="#1f2230" stroke="#0d0f18" stroke-width="7"/>
+    <rect x="707" y="630" width="126" height="20" fill="#f2f2f2"/>
+    <rect x="707" y="675" width="126" height="20" fill="#f2f2f2"/>
+    <rect x="707" y="720" width="126" height="20" fill="#f2f2f2"/>
+    <!-- brazos levantados -->
+    <rect x="655" y="470" width="52" height="150" rx="10" fill="#ffcc66" stroke="#8a5a14" stroke-width="7" transform="rotate(-12 681 610)"/>
+    <rect x="833" y="470" width="52" height="150" rx="10" fill="#ffcc66" stroke="#8a5a14" stroke-width="7" transform="rotate(12 859 610)"/>
+    <!-- cabeza con antifaz -->
+    <rect x="715" y="490" width="110" height="110" rx="16" fill="#ffcc66" stroke="#8a5a14" stroke-width="7"/>
+    <rect x="707" y="520" width="126" height="34" rx="8" fill="#141414"/>
+    <path d="M832 528 Q 880 515 905 540 Q 870 535 840 548Z" fill="#141414"/>
+    <path d="M832 540 Q 880 560 900 590 Q 860 565 838 556Z" fill="#141414"/>
+    <ellipse cx="745" cy="537" rx="12" ry="9" fill="#ffffff"/>
+    <ellipse cx="795" cy="537" rx="12" ry="9" fill="#ffffff"/>
+    <circle cx="742" cy="538" r="5" fill="#141414"/>
+    <circle cx="792" cy="538" r="5" fill="#141414"/>
+    <path d="M745 572 Q 772 590 800 568" fill="none" stroke="#5a3608" stroke-width="7" stroke-linecap="round"/>
+    <!-- huevo robado sobre la cabeza -->
+    <ellipse cx="770" cy="395" rx="72" ry="92" fill="url(#oro)" stroke="#7a4300" stroke-width="8"/>
+    <ellipse cx="748" cy="360" rx="16" ry="28" fill="#fff" opacity="0.6" transform="rotate(-20 748 360)"/>
+    <use href="#chispa" x="830" y="300" width="45" height="45"/>
+  </g>
+
+  <!-- gallina enojada persiguiendo al ladrón -->
+  <g>
+    <g stroke="#ffffff" stroke-width="9" stroke-linecap="round" opacity="0.85">
+      <line x1="1130" y1="860" x2="1200" y2="860"/>
+      <line x1="1120" y1="905" x2="1210" y2="905"/>
+    </g>
+    <line x1="1010" y1="930" x2="995" y2="985" stroke="#f0a020" stroke-width="10" stroke-linecap="round"/>
+    <line x1="1060" y1="930" x2="1080" y2="985" stroke="#f0a020" stroke-width="10" stroke-linecap="round"/>
+    <path d="M1110 830 Q 1160 800 1150 860 Q 1135 840 1110 850Z" fill="#f2f2f2" stroke="#9a9a9a" stroke-width="6"/>
+    <ellipse cx="1040" cy="875" rx="95" ry="72" fill="#ffffff" stroke="#9a9a9a" stroke-width="7"/>
+    <path d="M1030 860 Q 1080 800 1110 870 Q 1070 850 1040 880Z" fill="#ececec" stroke="#9a9a9a" stroke-width="6"/>
+    <circle cx="965" cy="800" r="48" fill="#ffffff" stroke="#9a9a9a" stroke-width="7"/>
+    <path d="M945 752 Q 952 728 965 750 Q 975 726 985 752 Q 995 734 998 760Z" fill="#e3342a"/>
+    <polygon points="922,800 885,812 922,822" fill="#f0a020" stroke="#a8650a" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M935 832 Q 945 850 955 836" fill="#e3342a"/>
+    <circle cx="952" cy="792" r="7" fill="#141414"/>
+    <line x1="938" y1="772" x2="965" y2="782" stroke="#141414" stroke-width="7" stroke-linecap="round"/>
+  </g>
+
+  <!-- nidos con huevos de colores -->
+  <g>
+    <ellipse cx="1520" cy="930" rx="120" ry="34" fill="#e2b955" stroke="#9c7426" stroke-width="6"/>
+    <ellipse cx="1490" cy="880" rx="42" ry="56" fill="#5aa6ff" stroke="#1d4f8f" stroke-width="6"/>
+    <ellipse cx="1560" cy="888" rx="38" ry="50" fill="#ae6bff" stroke="#4d2390" stroke-width="6"/>
+    <ellipse cx="1760" cy="1000" rx="130" ry="36" fill="#e2b955" stroke="#9c7426" stroke-width="6"/>
+    <ellipse cx="1730" cy="950" rx="44" ry="58" fill="#ff5fae" stroke="#8f1e57" stroke-width="6"/>
+    <ellipse cx="1805" cy="958" rx="40" ry="52" fill="#7be07b" stroke="#2a7a2a" stroke-width="6"/>
+    <ellipse cx="300" cy="985" rx="125" ry="34" fill="#e2b955" stroke="#9c7426" stroke-width="6"/>
+    <ellipse cx="275" cy="935" rx="42" ry="56" fill="#fff4e0" stroke="#9a8a6a" stroke-width="6"/>
+    <ellipse cx="340" cy="942" rx="40" ry="52" fill="#ff9a2e" stroke="#8f4a0a" stroke-width="6"/>
+  </g>
+
+  <!-- monedas -->
+  <g font-family="'Lilita One','Arial Black',Impact,sans-serif" font-size="40" text-anchor="middle" fill="#8a5200">
+    <circle cx="610" cy="430" r="32" fill="#ffd23f" stroke="#a86a00" stroke-width="6"/><text x="610" y="444">$</text>
+    <circle cx="1010" cy="430" r="26" fill="#ffd23f" stroke="#a86a00" stroke-width="6"/><text x="1010" y="443" font-size="32">$</text>
+  </g>
+
+  <rect width="1920" height="1080" fill="url(#vineta)"/>
+
+  <!-- título -->
+  <g class="titulo" transform="rotate(-4 520 200)">
+    <text x="90" y="240" font-size="220" fill="url(#letras)" stroke="#3b1d00" stroke-width="26" paint-order="stroke" stroke-linejoin="round">EGG HEIST</text>
+    <polygon points="100,272 900,272 932,306 900,340 100,340 132,306" fill="#d83a2e" stroke="#5a120c" stroke-width="8" stroke-linejoin="round"/>
+    <text x="516" y="328" font-size="60" text-anchor="middle" fill="#ffffff" stroke="#5a120c" stroke-width="10" paint-order="stroke" stroke-linejoin="round">GRANJA LADRONA</text>
+  </g>
+</svg>
+</body>
+</html>

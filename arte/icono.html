@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Egg Heist - ícono</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 512px; height: 512px; overflow: hidden; background: #000; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="fondo" cx="0.5" cy="0.5" r="0.7">
+      <stop offset="0" stop-color="#ffd84a"/>
+      <stop offset="0.6" stop-color="#ff9a1f"/>
+      <stop offset="1" stop-color="#d9480f"/>
+    </radialGradient>
+    <radialGradient id="oro" cx="0.36" cy="0.3" r="0.75">
+      <stop offset="0" stop-color="#fffbe0"/>
+      <stop offset="0.3" stop-color="#ffe066"/>
+      <stop offset="0.72" stop-color="#f4ab00"/>
+      <stop offset="1" stop-color="#b56a00"/>
+    </radialGradient>
+    <symbol id="chispa" viewBox="-40 -40 80 80" overflow="visible">
+      <path d="M0 -40 C 6 -6 6 -6 40 0 C 6 6 6 6 0 40 C -6 6 -6 6 -40 0 C -6 -6 -6 -6 0 -40Z" fill="#fffbe0"/>
+    </symbol>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#fondo)"/>
+  <!-- rayos de sol -->
+  <g transform="translate(256 270)" fill="#ffffff" opacity="0.16">
+    <polygon points="0,0 -36,-420 36,-420"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(30)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(60)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(90)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(120)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(150)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(180)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(210)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(240)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(270)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(300)"/>
+    <polygon points="0,0 -36,-420 36,-420" transform="rotate(330)"/>
+  </g>
+
+  <!-- nido -->
+  <ellipse cx="256" cy="438" rx="170" ry="40" fill="#e2b955" stroke="#7a5a1c" stroke-width="9"/>
+
+  <!-- huevo dorado con antifaz de ladrón -->
+  <ellipse cx="256" cy="270" rx="148" ry="188" fill="url(#oro)" stroke="#5a3000" stroke-width="12"/>
+  <ellipse cx="205" cy="175" rx="30" ry="52" fill="#ffffff" opacity="0.55" transform="rotate(-20 205 175)"/>
+  <!-- cintas del antifaz -->
+  <path d="M392 222 Q 450 205 478 240 Q 440 236 400 250Z" fill="#141414"/>
+  <path d="M392 246 Q 448 268 470 306 Q 430 278 398 266Z" fill="#141414"/>
+  <!-- antifaz -->
+  <path d="M112 232 Q 256 196 402 232 L 402 270 Q 256 250 112 270Z" fill="#141414"/>
+  <ellipse cx="200" cy="245" rx="34" ry="20" fill="#ffffff"/>
+  <ellipse cx="312" cy="245" rx="34" ry="20" fill="#ffffff"/>
+  <circle cx="210" cy="247" r="11" fill="#141414"/>
+  <circle cx="322" cy="247" r="11" fill="#141414"/>
+  <!-- sonrisa pícara -->
+  <path d="M215 325 Q 262 352 310 318" fill="none" stroke="#5a3000" stroke-width="10" stroke-linecap="round"/>
+
+  <use href="#chispa" x="400" y="80" width="70" height="70"/>
+  <use href="#chispa" x="70" y="120" width="44" height="44"/>
+  <use href="#chispa" x="420" y="360" width="36" height="36"/>
+</svg>
+</body>
+</html>

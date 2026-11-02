@@ -1,4 +1,4 @@
-# 🥚 Roba el Huevo
+# Egg Heist 🥚 Granja Ladrona 🐔
 
 Juego de Roblox estilo *tycoon* + robo: compra huevos que pasan por una cinta, ponlos en los nidos de tu granja para ganar dinero, y roba los huevos de las granjas de otros jugadores sin que te atrapen.
 
@@ -10,8 +10,8 @@ Todo el mapa (granjas, cinta, gallinero, plaza, tienda) **se construye por códi
 
 | Archivo | Tipo en Roblox | Dónde va |
 |---|---|---|
-| `RobaHuevos_Servidor.lua` | **Script** | `ServerScriptService` |
-| `RobaHuevos_Cliente.lua` | **LocalScript** | `StarterPlayer > StarterPlayerScripts` |
+| `EggHeist_Servidor.lua` | **Script** | `ServerScriptService` |
+| `EggHeist_Cliente.lua` | **LocalScript** | `StarterPlayer > StarterPlayerScripts` |
 
 ---
 
@@ -67,8 +67,8 @@ Todo el mapa (granjas, cinta, gallinero, plaza, tienda) **se construye por códi
 ## 🛠️ Instalación en Roblox Studio
 
 1. Abre tu lugar en **Roblox Studio**.
-2. En el **Explorador**, clic derecho en `ServerScriptService` → **Insertar objeto → Script**. Borra el texto que trae y pega el contenido de `RobaHuevos_Servidor.lua`.
-3. Clic derecho en `StarterPlayer > StarterPlayerScripts` → **Insertar objeto → LocalScript**. Pega el contenido de `RobaHuevos_Cliente.lua`.
+2. En el **Explorador**, clic derecho en `ServerScriptService` → **Insertar objeto → Script**. Borra el texto que trae y pega el contenido de `EggHeist_Servidor.lua`.
+3. Clic derecho en `StarterPlayer > StarterPlayerScripts` → **Insertar objeto → LocalScript**. Pega el contenido de `EggHeist_Cliente.lua`.
 4. Pulsa ▶ **Probar**. El mapa aparece flotando a 300 studs de altura para no chocar con tu escenario (puedes cambiarlo en `CONFIG.CENTRO`).
 5. Para probar robos entre jugadores: pestaña **Prueba → Clientes y servidores → 2 jugadores → Iniciar**.
 
@@ -133,7 +133,7 @@ Los efectos de sonido ya funcionan (usan sonidos que vienen con Roblox). Para po
 2. Aparece un objeto **Sound** en `Workspace`. Cámbiale el nombre a `Musica` y arrástralo a `ReplicatedStorage`.
 3. Listo: el juego la toca en bucle. El botón 🔊 la silencia.
 
-También puedes pegar el ID directamente en `MUSICA_ID` (sección *Sonidos y música* de `RobaHuevos_Cliente.lua`):
+También puedes pegar el ID directamente en `MUSICA_ID` (sección *Sonidos y música* de `EggHeist_Cliente.lua`):
 
 ```lua
 local MUSICA_ID = "rbxassetid://1234567890"
@@ -143,7 +143,7 @@ local MUSICA_ID = "rbxassetid://1234567890"
 
 ## ⚙️ Configuración
 
-Todo se ajusta en la tabla `CONFIG`, al principio de `RobaHuevos_Servidor.lua`:
+Todo se ajusta en la tabla `CONFIG`, al principio de `EggHeist_Servidor.lua`:
 
 | Opción | Qué controla |
 |---|---|
@@ -166,7 +166,7 @@ Todo se ajusta en la tabla `CONFIG`, al principio de `RobaHuevos_Servidor.lua`:
 
 Las rarezas están en `RAREZAS`, las mutaciones en `MUTACIONES` y los niveles de la caminadora en `CAMINADORA`.
 
-> Si cambias `PREMIO_MISION_SEGUNDOS` o `PREMIO_MISION_MINIMO`, cámbialos también al principio de `RobaHuevos_Cliente.lua`.
+> Si cambias `PREMIO_MISION_SEGUNDOS` o `PREMIO_MISION_MINIMO`, cámbialos también al principio de `EggHeist_Cliente.lua`.
 
 ---
 
